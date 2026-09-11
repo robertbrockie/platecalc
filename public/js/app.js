@@ -365,12 +365,10 @@ function initApp() {
     stepDownBtn.addEventListener("click", () => adjustWeight(-5));
   }
 
-  document.querySelectorAll(".adjust-chip").forEach(chip => {
-    chip.addEventListener("click", () => {
-      const delta = parseInt(chip.getAttribute("data-delta"), 10);
-      adjustWeight(delta);
-    });
-  });
+  // Prevent double-tap zoom on iOS Safari when tapping buttons rapidly
+  document.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+  }, { passive: false });
 
   // Target input events
   targetInput.addEventListener("input", calculate);
@@ -440,7 +438,7 @@ function initApp() {
 
     // Update headline text
     document.getElementById("res-target-weight").textContent = result.targetWeight;
-    document.getElementById("res-bar-name").innerHTML = `${selectedBar.name} &bull; ${selectedBar.weight} lb`;
+    document.getElementById("res-bar-name").textContent = `${selectedBar.shortName} (${selectedBar.weight})`;
     document.getElementById("res-side-weight").textContent = `${result.weightPerSide} lb per side`;
 
     // Render barbell visualization
@@ -540,28 +538,22 @@ function initApp() {
 
     if (result.platesPerSide.length === 0) {
       const emptyNotice = document.createElement("li");
-      emptyNotice.className = "breakdown-empty-item";
-      emptyNotice.textContent = "No plates needed (empty bar).";
+      emptyNotice.className = "breakdown-empty-text";
+      emptyNotice.textContent = "Bar only (0 plates)";
       breakdownList.appendChild(emptyNotice);
     } else {
       result.breakdown.forEach(item => {
         const li = document.createElement("li");
-        li.className = "breakdown-item";
+        li.className = "breakdown-badge";
 
         const dot = document.createElement("span");
         dot.className = `plate-dot plate-dot-${item.plateDef.color}`;
 
         const text = document.createElement("span");
-        text.className = "breakdown-text";
-        text.innerHTML = `<strong>${item.weight} lb</strong> &times; ${item.count}`;
-
-        const subtotal = document.createElement("span");
-        subtotal.className = "breakdown-subtotal";
-        subtotal.textContent = `${item.weight * item.count} lb`;
+        text.innerHTML = `<strong>${item.weight}</strong>&times;${item.count}`;
 
         li.appendChild(dot);
         li.appendChild(text);
-        li.appendChild(subtotal);
         breakdownList.appendChild(li);
       });
     }

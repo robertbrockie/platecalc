@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="description" content="Sleek, high-performance barbell plate calculator for the gym. Visualize plate loading with instant math and offline support.">
   <meta name="theme-color" content="#08090c">
   <title>Barbell Plate Calculator</title>
@@ -28,10 +28,9 @@
     <!-- Header -->
     <header class="app-header">
       <div class="header-brand">
-        <img src="favicon.svg" alt="PlateCalc brain logo" class="header-icon" width="28" height="28">
+        <img src="favicon.svg" alt="PlateCalc logo" class="header-icon" width="24" height="24">
         <h1>PLATECALC</h1>
       </div>
-      <p class="tagline">Smart bar math &bull; Zero brain fog</p>
     </header>
 
     <main>
@@ -39,24 +38,18 @@
       <section class="glass-card controls-card" aria-label="Calculator Inputs">
         <!-- Segmented Bar Selector -->
         <div class="form-group">
-          <label class="form-label" id="bar-selector-label">Select Bar</label>
-          <div class="segmented-bar-control" role="radiogroup" aria-labelledby="bar-selector-label" id="bar-segmented">
+          <div class="segmented-bar-control" role="radiogroup" aria-label="Select Barbell" id="bar-segmented">
             <!-- Populated dynamically by js/app.js -->
           </div>
-          <!-- Hidden fallback select for assistive tech -->
+          <!-- Hidden fallback select for accessibility -->
           <select id="bar-select" class="visually-hidden" aria-hidden="true" tabindex="-1"></select>
         </div>
 
         <!-- Target Weight Input with Steppers -->
-        <div class="form-group" style="margin-top: 14px;">
-          <div class="label-row">
-            <label class="form-label" for="target-weight">Target Weight</label>
-            <button type="button" id="clear-btn" class="text-btn" title="Reset weight input">Clear</button>
-          </div>
-
+        <div class="form-group" style="margin-top: 10px;">
           <div class="weight-input-container">
             <button type="button" class="stepper-btn" id="step-down-btn" aria-label="Decrease weight by 5 pounds" title="-5 lb">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
 
             <div class="weight-display-wrapper">
@@ -75,48 +68,30 @@
             </div>
 
             <button type="button" class="stepper-btn" id="step-up-btn" aria-label="Increase weight by 5 pounds" title="+5 lb">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
           </div>
         </div>
 
-        <!-- Quick Delta Adjusters -->
-        <div class="quick-adjust-row">
-          <span class="adjust-label">Quick Adjust</span>
-          <div class="adjust-chips">
-            <button type="button" class="adjust-chip" data-delta="-45">-45</button>
-            <button type="button" class="adjust-chip" data-delta="-10">-10</button>
-            <button type="button" class="adjust-chip" data-delta="+10">+10</button>
-            <button type="button" class="adjust-chip" data-delta="+45">+45</button>
-          </div>
-        </div>
-
         <!-- Milestone Presets -->
-        <div class="presets-section">
-          <span class="presets-label">Popular Milestones</span>
+        <div class="presets-row">
           <div id="quick-weights" class="presets-list" role="group" aria-label="Quick weight presets">
             <!-- Populated by js/app.js -->
           </div>
+          <button type="button" id="clear-btn" class="clear-chip" title="Clear weight input">Clear</button>
         </div>
 
-        <!-- Hidden submit button for Enter key accessibility -->
+        <!-- Hidden submit for Enter key support -->
         <form id="calc-form" style="display: none;"><button type="submit" id="calc-btn"></button></form>
       </section>
 
       <!-- Empty State -->
       <section id="empty-state" class="glass-card state-card empty-state" aria-live="polite">
-        <div class="state-icon-wrapper">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
-        </div>
         <p class="state-title">Choose a bar and enter your target weight</p>
-        <p class="state-desc">Plate breakdown and bar visualization will appear instantly.</p>
       </section>
 
       <!-- Error State -->
       <section id="error-container" class="glass-card state-card error-state hidden" aria-live="assertive">
-        <div class="state-icon-wrapper error-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-        </div>
         <p id="error-message" class="error-message"></p>
         <div id="error-closest" class="error-closest"></div>
       </section>
@@ -128,8 +103,9 @@
           <div class="result-headline">
             <span id="res-target-weight" class="res-target-weight">315</span>
             <span class="res-target-unit">LB</span>
+            <span class="res-dot">&bull;</span>
+            <span id="res-bar-name" class="res-bar-name">Straight (45)</span>
           </div>
-          <div id="res-bar-name" class="res-bar-name">Straight Bar &bull; 45 lb</div>
           <div class="res-badge-wrap">
             <span id="res-side-weight" class="res-side-badge">135 lb per side</span>
           </div>
@@ -153,37 +129,33 @@
           </div>
         </div>
 
-        <!-- Breakdown & Stat Rings -->
-        <div class="breakdown-grid">
-          <!-- Left Column: Plate Breakdown per side -->
-          <div class="breakdown-column">
-            <h2 class="section-title">Each Side</h2>
-            <ul id="breakdown-list" class="breakdown-list">
-              <!-- Populated dynamically by js/app.js -->
-            </ul>
+        <!-- Compact Summary & Breakdown -->
+        <div class="breakdown-container">
+          <div class="summary-chips-row">
+            <div class="summary-chip">
+              <span class="chip-label">Side:</span>
+              <span id="summary-loaded-per-side" class="chip-val highlight">135 lb</span>
+            </div>
+            <div class="summary-chip">
+              <span class="chip-label">Bar:</span>
+              <span id="summary-bar-weight" class="chip-val">45 lb</span>
+            </div>
+            <div class="summary-chip">
+              <span class="chip-label">Plates:</span>
+              <span id="breakdown-total-plates" class="chip-val">6</span>
+            </div>
+            <div class="summary-chip total-chip">
+              <span class="chip-label">Total:</span>
+              <span id="summary-total-weight" class="chip-val total-val">315 lb</span>
+            </div>
           </div>
 
-          <!-- Right Column: High-Density Stats Grid -->
-          <div class="stats-column">
-            <h2 class="section-title">Load Summary</h2>
-            <div class="stats-grid">
-              <div class="stat-tile">
-                <span class="stat-label">Side Load</span>
-                <span id="summary-loaded-per-side" class="stat-value highlight">0 lb</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-label">Bar Weight</span>
-                <span id="summary-bar-weight" class="stat-value">45 lb</span>
-              </div>
-              <div class="stat-tile">
-                <span class="stat-label">Plates</span>
-                <span id="breakdown-total-plates" class="stat-value">0</span>
-              </div>
-              <div class="stat-tile total-tile">
-                <span class="stat-label">Total</span>
-                <span id="summary-total-weight" class="stat-value total-value">0 lb</span>
-              </div>
-            </div>
+          <!-- Each Side Plate Badges -->
+          <div class="breakdown-side-section">
+            <span class="breakdown-side-label">Each Side:</span>
+            <ul id="breakdown-list" class="breakdown-badges-list">
+              <!-- Populated dynamically by js/app.js -->
+            </ul>
           </div>
         </div>
       </section>
