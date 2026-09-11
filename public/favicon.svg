@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#0d0f12"/>
+  <!-- Brain base -->
+  <g fill="#f8fafc" stroke="#0d0f12" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Occipital & Cerebellum -->
+    <path d="M 33 46 C 35 48 37 51 36 53 C 34 54 30 51 28 47 Z" fill="#e2e8f0"/>
+    <!-- Main brain lobes -->
+    <path d="M 20 44 C 15 44 13 39 14 34 C 12 33 11 29 13 25 C 14 20 18 16 24 16 C 26 14 31 13 36 14 C 42 13 48 16 51 21 C 53 25 53 30 50 34 C 52 38 50 43 45 44 C 41 47 37 46 33 45 C 29 48 23 48 20 44 Z"/>
+    <!-- Gyri / Sulci lines -->
+    <path d="M 23 26 C 26 28 29 27 31 29" fill="none" stroke="#64748b" stroke-width="1.8"/>
+    <path d="M 22 36 C 26 38 29 35 34 38" fill="none" stroke="#64748b" stroke-width="1.8"/>
+    <path d="M 36 38 C 39 37 43 40 45 37" fill="none" stroke="#64748b" stroke-width="1.8"/>
+    <path d="M 40 26 C 43 27 46 29 45 32" fill="none" stroke="#64748b" stroke-width="1.8"/>
+  </g>
+  <!-- Athletic Sweatband -->
+  <g transform="rotate(-6 32 27)">
+    <!-- Sweatband body -->
+    <rect x="11" y="23" width="42" height="11" rx="4" fill="#10b981" stroke="#059669" stroke-width="1"/>
+    <!-- Stripes -->
+    <rect x="11" y="26.5" width="42" height="1.8" fill="#ffffff"/>
+    <rect x="11" y="29.5" width="42" height="1.8" fill="#ffffff"/>
+  </g>
+</svg>

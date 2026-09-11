@@ -491,4 +491,14 @@ function initApp() {
     document.getElementById("summary-bar-weight").textContent = `${result.barWeight} lb`;
     document.getElementById("summary-total-weight").textContent = `${result.targetWeight} lb`;
   }
+
+  // Register Service Worker for offline gym use & PWA install
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(() => {
+        // Silently ignore if served from non-secure context or file://
+      });
+    });
+  }
 }
+

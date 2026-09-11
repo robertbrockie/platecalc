@@ -50,41 +50,75 @@ Designed for real-world gym use on phones or desktops to eliminate math mistakes
 
 ```
 platecalc/
-├── index.html        # Semantic HTML structure & accessible controls
-├── css/
-│   └── styles.css    # Dark-theme styles, responsive barbell & plate rendering
-├── js/
-│   └── app.js        # Core math, greedy selection, DOM controller & localStorage
+├── public/               # Document root for web servers (Apache, Nginx, serve)
+│   ├── index.html        # Semantic HTML structure & accessible controls
+│   ├── css/
+│   │   └── styles.css    # Dark-theme styles, responsive barbell & plate rendering
+│   └── js/
+│       └── app.js        # Core math, greedy selection, DOM controller & localStorage
+├── test/
+│   └── calc.test.js      # Unit test suite verifying all acceptance criteria
+├── package.json          # Development scripts (serve, test)
 └── README.md
 ```
 
 ---
 
-## Getting Started
+## Local Development & Hosting
 
-No installation or build steps required. Simply open `index.html` in any modern web browser:
+### Local Development using `serve`
+Run locally using `serve`:
 
 ```bash
-# macOS
-open index.html
+# Using npm script (runs npx serve public)
+npm start
+# or
+npm run dev
 
-# Linux
-xdg-open index.html
-
-# Or serve statically via python
-python3 -m http.server 8000
+# Or directly with npx
+npx serve public
 ```
+
+### Static File Opening
+You can also open the file directly in any browser:
+
+```bash
+open public/index.html
+```
+
+### Web Server Deployment (Apache, Nginx, etc.)
+Point your web server's document root to the `public/` directory:
+
+- **Apache `DocumentRoot`**: `/path/to/platecalc/public`
+- **Nginx `root`**: `/path/to/platecalc/public;`
+
+---
+
+## Install to Home Screen (PWA)
+
+PlateCalc is a Progressive Web App (PWA) with offline caching and home screen icon support:
+
+### iOS (iPhone/iPad — Safari)
+1. Open the app in **Safari**.
+2. Tap the **Share** button (the square with an arrow pointing up).
+3. Scroll down and tap **Add to Home Screen**.
+4. Tap **Add**. The app will now launch full-screen from your home screen with its custom brain icon, with no Safari browser bars.
+
+### Android (Chrome)
+1. Open the app in **Chrome**.
+2. Tap the **three-dot menu** in the top-right corner.
+3. Tap **Add to Home screen** (or **Install app**).
+4. Tap **Install**.
+
+Once installed, it works 100% offline at the gym without cell signal or WiFi.
 
 ---
 
 ## Testing
 
-Calculation logic is decoupled from DOM manipulation and can be verified using Node.js:
+Run the automated test suite with Node.js:
 
 ```bash
-node -e '
-const { calculatePlateLoad } = require("./js/app.js");
-console.log("315 on 45 bar:", calculatePlateLoad(45, 315).platesPerSide);
-console.log("185 on 55 bar:", calculatePlateLoad(55, 185).platesPerSide);
-'
+npm test
 ```
+

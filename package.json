@@ -1,0 +1,13 @@
+{
+  "name": "platecalc",
+  "version": "1.0.0",
+  "description": "Fast, lightweight barbell plate calculator",
+  "scripts": {
+    "start": "npx serve public",
+    "dev": "npx serve public",
+    "test": "node test/calc.test.js"
+  },
+  "keywords": ["barbell", "plates", "calculator", "fitness", "gym"],
+  "author": "",
+  "license": "ISC"
+}
