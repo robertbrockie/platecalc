@@ -12,24 +12,28 @@ const bars = [
     id: "straight",
     name: "Straight Bar",
     label: "Straight Bar — 45 lb",
+    shortName: "Straight",
     weight: 45
   },
   {
     id: "trap",
     name: "Trap Bar",
     label: "Trap Bar — 55 lb",
+    shortName: "Trap",
     weight: 55
   },
   {
     id: "preacher15",
     name: "EZ Curl Bar — 15 lb",
     label: "EZ Curl / Preacher Bar — 15 lb",
+    shortName: "EZ Curl",
     weight: 15
   },
   {
     id: "preacher25",
     name: "EZ Curl Bar — 25 lb",
     label: "EZ Curl / Preacher Bar — 25 lb",
+    shortName: "EZ Curl",
     weight: 25
   }
 ];
@@ -245,59 +249,138 @@ if (typeof document !== "undefined") {
 }
 
 function initApp() {
+  const barSegmented = document.getElementById("bar-segmented");
   const barSelect = document.getElementById("bar-select");
   const targetInput = document.getElementById("target-weight");
+  const stepUpBtn = document.getElementById("step-up-btn");
+  const stepDownBtn = document.getElementById("step-down-btn");
   const calcForm = document.getElementById("calc-form");
   const quickWeightContainer = document.getElementById("quick-weights");
   const resultsContainer = document.getElementById("results-container");
   const emptyState = document.getElementById("empty-state");
   const errorContainer = document.getElementById("error-container");
 
-  // Populate bar select dropdown
-  barSelect.innerHTML = "";
-  bars.forEach(bar => {
-    const option = document.createElement("option");
-    option.value = bar.id;
-    option.textContent = bar.label;
-    barSelect.appendChild(option);
-  });
-
-  // Restore remembered bar from localStorage
-  const savedBarId = localStorage.getItem("platecalc_last_bar");
-  if (savedBarId && bars.some(b => b.id === savedBarId)) {
-    barSelect.value = savedBarId;
-  } else {
-    barSelect.value = "straight";
+  let currentBarId = localStorage.getItem("platecalc_last_bar") || "straight";
+  if (!bars.some(b => b.id === currentBarId)) {
+    currentBarId = "straight";
   }
 
-  // Quick weight presets
-  const quickWeights = [95, 135, 185, 225, 275, 315, 365, 405];
-  quickWeightContainer.innerHTML = "";
-  quickWeights.forEach(wt => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "quick-chip";
-    btn.textContent = `${wt} lb`;
-    btn.addEventListener("click", () => {
-      targetInput.value = wt;
-      calculate();
-      targetInput.focus();
+  // Populate Segmented Bar Control
+  if (barSegmented) {
+    barSegmented.innerHTML = "";
+    bars.forEach(bar => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `segmented-pill ${bar.id === currentBarId ? "active" : ""}`;
+      btn.setAttribute("role", "radio");
+      btn.setAttribute("aria-checked", bar.id === currentBarId ? "true" : "false");
+      btn.setAttribute("data-bar-id", bar.id);
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "pill-name";
+      nameSpan.textContent = bar.shortName;
+
+      const wtSpan = document.createElement("span");
+      wtSpan.className = "pill-weight";
+      wtSpan.textContent = `${bar.weight} lb`;
+
+      btn.appendChild(nameSpan);
+      btn.appendChild(wtSpan);
+
+      btn.addEventListener("click", () => {
+        selectBar(bar.id);
+      });
+
+      barSegmented.appendChild(btn);
     });
-    quickWeightContainer.appendChild(btn);
-  });
+  }
 
-  // Event Listeners
-  barSelect.addEventListener("change", () => {
-    localStorage.setItem("platecalc_last_bar", barSelect.value);
+  // Populate fallback select for accessibility
+  if (barSelect) {
+    barSelect.innerHTML = "";
+    bars.forEach(bar => {
+      const option = document.createElement("option");
+      option.value = bar.id;
+      option.textContent = bar.label;
+      barSelect.appendChild(option);
+    });
+    barSelect.value = currentBarId;
+    barSelect.addEventListener("change", () => {
+      selectBar(barSelect.value);
+    });
+  }
+
+  function selectBar(barId) {
+    currentBarId = barId;
+    localStorage.setItem("platecalc_last_bar", barId);
+
+    if (barSegmented) {
+      barSegmented.querySelectorAll(".segmented-pill").forEach(btn => {
+        const isActive = btn.getAttribute("data-bar-id") === barId;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-checked", isActive ? "true" : "false");
+      });
+    }
+
+    if (barSelect) {
+      barSelect.value = barId;
+    }
+
     calculate();
+  }
+
+  // Quick weight milestone presets
+  const quickWeights = [95, 135, 185, 225, 275, 315, 365, 405];
+  if (quickWeightContainer) {
+    quickWeightContainer.innerHTML = "";
+    quickWeights.forEach(wt => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "quick-chip";
+      btn.textContent = `${wt} lb`;
+      btn.addEventListener("click", () => {
+        targetInput.value = wt;
+        calculate();
+        targetInput.focus();
+      });
+      quickWeightContainer.appendChild(btn);
+    });
+  }
+
+  // Stepper & Quick Delta Adjusters
+  function adjustWeight(delta) {
+    const raw = targetInput.value.trim();
+    const current = raw === "" ? getSelectedBar().weight : parseFloat(raw);
+    let next = isNaN(current) ? getSelectedBar().weight : current + delta;
+    if (next < 0) next = 0;
+    targetInput.value = next;
+    calculate();
+    targetInput.focus();
+  }
+
+  if (stepUpBtn) {
+    stepUpBtn.addEventListener("click", () => adjustWeight(5));
+  }
+  if (stepDownBtn) {
+    stepDownBtn.addEventListener("click", () => adjustWeight(-5));
+  }
+
+  document.querySelectorAll(".adjust-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const delta = parseInt(chip.getAttribute("data-delta"), 10);
+      adjustWeight(delta);
+    });
   });
 
+  // Target input events
   targetInput.addEventListener("input", calculate);
 
-  calcForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    calculate();
-  });
+  if (calcForm) {
+    calcForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      calculate();
+    });
+  }
 
   // Clear button
   const clearBtn = document.getElementById("clear-btn");
@@ -313,7 +396,7 @@ function initApp() {
   calculate();
 
   function getSelectedBar() {
-    return bars.find(b => b.id === barSelect.value) || bars[0];
+    return bars.find(b => b.id === currentBarId) || bars[0];
   }
 
   function calculate() {
@@ -355,9 +438,9 @@ function initApp() {
     errorContainer.classList.add("hidden");
     resultsContainer.classList.remove("hidden");
 
-    // Update summary text
-    document.getElementById("res-target-weight").textContent = `${result.targetWeight} LB`;
-    document.getElementById("res-bar-name").textContent = `${selectedBar.name} — ${selectedBar.weight} lb`;
+    // Update headline text
+    document.getElementById("res-target-weight").textContent = result.targetWeight;
+    document.getElementById("res-bar-name").innerHTML = `${selectedBar.name} &bull; ${selectedBar.weight} lb`;
     document.getElementById("res-side-weight").textContent = `${result.weightPerSide} lb per side`;
 
     // Render barbell visualization
@@ -443,8 +526,6 @@ function initApp() {
     });
 
     // Left side: mirrored (2.5 | 5 | 10 | 45 | BAR)
-    // platesPerSide is largest to smallest. In plates-left flex layout,
-    // we reverse the DOM nodes so largest is adjacent to collar on the right side of the sleeve.
     const reversed = [...platesPerSide].reverse();
     reversed.forEach(weight => {
       leftContainer.appendChild(createPlateElement(weight));
@@ -472,11 +553,11 @@ function initApp() {
 
         const text = document.createElement("span");
         text.className = "breakdown-text";
-        text.innerHTML = `<strong>${item.weight} lb</strong> × ${item.count}`;
+        text.innerHTML = `<strong>${item.weight} lb</strong> &times; ${item.count}`;
 
         const subtotal = document.createElement("span");
         subtotal.className = "breakdown-subtotal";
-        subtotal.textContent = `(${item.weight * item.count} lb)`;
+        subtotal.textContent = `${item.weight * item.count} lb`;
 
         li.appendChild(dot);
         li.appendChild(text);
@@ -485,11 +566,24 @@ function initApp() {
       });
     }
 
-    breakdownTotalPlates.textContent = `${result.totalPlatesCount} (${result.platesPerSide.length} per side)`;
+    if (breakdownTotalPlates) {
+      breakdownTotalPlates.textContent = `${result.totalPlatesCount}`;
+    }
 
-    document.getElementById("summary-loaded-per-side").textContent = `${result.weightPerSide} lb`;
-    document.getElementById("summary-bar-weight").textContent = `${result.barWeight} lb`;
-    document.getElementById("summary-total-weight").textContent = `${result.targetWeight} lb`;
+    const loadedPerSideEl = document.getElementById("summary-loaded-per-side");
+    if (loadedPerSideEl) {
+      loadedPerSideEl.textContent = `${result.weightPerSide} lb`;
+    }
+
+    const barWeightEl = document.getElementById("summary-bar-weight");
+    if (barWeightEl) {
+      barWeightEl.textContent = `${result.barWeight} lb`;
+    }
+
+    const totalWeightEl = document.getElementById("summary-total-weight");
+    if (totalWeightEl) {
+      totalWeightEl.textContent = `${result.targetWeight} lb`;
+    }
   }
 
   // Register Service Worker for offline gym use & PWA install
@@ -501,4 +595,3 @@ function initApp() {
     });
   }
 }
-
