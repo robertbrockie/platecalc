@@ -10,31 +10,44 @@ Designed for real-world gym use on phones or desktops to eliminate math mistakes
 
 ## Features
 
-- **Instant Auto-Calculation**: Updates dynamically as you type your target weight or switch bar types.
+- **Instant Auto-Calculation**: Updates dynamically as you type your target weight or select equipment.
 - **Symmetric Plate Breakdown**: Uses a greedy plate selection algorithm (fewest, largest plates first) with internal half-pound unit scaling to eliminate floating-point precision issues.
+- **Modern Equipment Dropdown**: Sleek dark-glass dropdown displaying equipment name, starting weight pill, active selection indicator, and custom equipment badges.
+- **Custom Bars & Plate-Loaded Machines**: Add any specialty bar or plate-loaded gym machine with a custom starting weight (e.g., Hack Squat starting at 105 lb, Leg Press sled at 118 lb, Smith Machine).
+- **Persistent Equipment (`localStorage`)**: Custom equipment and last selected equipment are automatically saved in browser storage. Custom equipment can be removed anytime with a single tap.
 - **Visual Barbell Rendering**: CSS-rendered barbell with realistic sleeve collars and color-coded plates mirrored on both sides (`BAR | 45 | 10 | 5 | 2.5` on the right, mirrored on the left).
-- **Gym-Ready Mobile UI**: Responsive design tailored for 320px+ viewports without horizontal scrolling. Plate widths scale smoothly under heavy loads.
-- **Detailed Plate Breakdown**: Lists exact plate counts per side, per-side load, bar weight, total plate count, and total weight.
+- **Prominent Per-Side Badge**: Elevates the single most important number for a lifter (`XX lb per side`) in a prominent cyan badge right above the visual bar.
+- **Gym-Ready Mobile UI**: Responsive dark glass gym aesthetic (Apple Fitness / Whoop style) tailored for 320px+ viewports with zero tap-to-zoom on iOS Safari and 44px+ touch targets.
+- **Detailed Plate Breakdown**: Lists exact plate counts per side, per-side load, starting bar/sled weight, total plate count, and total loaded weight.
 - **Smart Validation & Suggestions**:
-  - Warns if the target weight is below the bar weight.
+  - Warns if the target weight is below the bar or machine starting weight.
   - Warns if a weight cannot be loaded symmetrically with available plates (e.g., 47 lb on a 45 lb bar) and provides one-tap shortcut buttons for the closest available weights.
-- **Quick Weight Presets**: One-tap buttons for common gym milestones (95, 135, 185, 225, 275, 315, 365, 405 lb).
-- **Persistent Preferences**: Saves your last selected bar to `localStorage`.
-- **Completely Offline & Self-Contained**: Opens directly in any browser with zero setup.
+- **One-Tap Steppers & Clear**: Quick `+5` / `-5` lb stepper buttons and a dedicated centered Clear button.
+- **Completely Offline & PWA**: Installable as a Progressive Web App on iOS and Android with zero external dependencies.
 
 ---
 
 ## Supported Equipment
 
-### Bars
+### Built-in Bars
 | Bar | Weight | Notes |
 | :--- | :--- | :--- |
 | **Straight Bar** | 45 lb | Standard Olympic barbell |
 | **Trap Bar** | 55 lb | Standard hex / trap bar |
-| **EZ Curl / Preacher Bar** | 15 lb | Lightweight curl bar |
-| **EZ Curl / Preacher Bar** | 25 lb | Standard curl bar |
+| **EZ Curl Bar** | 15 lb | Lightweight curl / preacher bar |
+| **EZ Curl Bar** | 25 lb | Standard curl / preacher bar |
 
-### Plates
+### Custom Bars & Plate-Loaded Machines
+Tap **"Add Bar / Machine"** at the bottom of the equipment dropdown to add any custom equipment with arbitrary starting weight, for example:
+- **Hack Squat Machine** (e.g., 105 lb sled)
+- **Leg Press Machine** (e.g., 118 lb sled)
+- **Smith Machine** (e.g., 15 lb or 20 lb counterbalance)
+- **Safety Squat Bar** (e.g., 65 lb or 70 lb)
+- **Women's Olympic Bar** (e.g., 35 lb / 15 kg)
+
+Custom equipment is saved directly in `localStorage` and can be deleted anytime.
+
+### Available Plates
 | Weight | Color | Height | Thickness |
 | :--- | :--- | :--- | :--- |
 | **45 lb** | Blue | Tall (130px) | Thick (22px) |
