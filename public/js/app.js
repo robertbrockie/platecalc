@@ -365,10 +365,10 @@ function initApp() {
     if (dropdownOptionsList) {
       dropdownOptionsList.innerHTML = "";
       allBars.forEach(bar => {
-        const option = document.createElement("button");
-        option.type = "button";
+        const option = document.createElement("div");
         option.className = `dropdown-option ${bar.id === currentBarId ? "selected" : ""}`;
         option.setAttribute("role", "option");
+        option.setAttribute("tabindex", "0");
         option.setAttribute("aria-selected", bar.id === currentBarId ? "true" : "false");
         option.setAttribute("data-bar-id", bar.id);
 
@@ -428,6 +428,14 @@ function initApp() {
         option.addEventListener("click", () => {
           selectBar(bar.id);
           closeDropdown();
+        });
+
+        option.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            selectBar(bar.id);
+            closeDropdown();
+          }
         });
 
         dropdownOptionsList.appendChild(option);
@@ -626,10 +634,6 @@ function initApp() {
 
   // Initial calculation check
   calculate();
-
-  function getSelectedBar() {
-    return bars.find(b => b.id === currentBarId) || bars[0];
-  }
 
   function calculate() {
     const rawVal = targetInput.value.trim();
