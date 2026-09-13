@@ -314,6 +314,7 @@ if (typeof document !== "undefined") {
 }
 
 function initApp() {
+  const controlsCard = document.querySelector(".controls-card");
   const dropdownContainer = document.getElementById("bar-dropdown-container");
   const dropdownTrigger = document.getElementById("bar-dropdown-trigger");
   const dropdownMenu = document.getElementById("bar-dropdown-menu");
@@ -461,6 +462,7 @@ function initApp() {
     if (!dropdownContainer || !dropdownMenu) return;
     dropdownContainer.classList.add("open");
     dropdownMenu.classList.remove("hidden");
+    if (controlsCard) controlsCard.classList.add("has-dropdown-open");
     if (dropdownTrigger) dropdownTrigger.setAttribute("aria-expanded", "true");
   }
 
@@ -468,6 +470,7 @@ function initApp() {
     if (!dropdownContainer || !dropdownMenu) return;
     dropdownContainer.classList.remove("open");
     dropdownMenu.classList.add("hidden");
+    if (controlsCard) controlsCard.classList.remove("has-dropdown-open");
     if (dropdownTrigger) dropdownTrigger.setAttribute("aria-expanded", "false");
   }
 
