@@ -95,4 +95,83 @@ assert.strictEqual(res.reason, "TARGET_NOT_LOADABLE");
 assert.deepStrictEqual(res.closestWeights, [45, 50]);
 console.log("✓ Invalid: Straight Bar / 47 => not loadable exactly (closest 45, 50)");
 
+console.log("\n--- Running Plate-Loaded Machine Tests (Hack Squat / Leg Press) ---");
+
+// Test 11: Hack Squat machine (105 lb starting weight) / 105 lb
+res = calculatePlateLoad(105, 105);
+assert.strictEqual(res.valid, true);
+assert.deepStrictEqual(res.platesPerSide, []);
+assert.strictEqual(res.weightPerSide, 0);
+assert.strictEqual(res.totalPlatesCount, 0);
+console.log("✓ Hack Squat (105 lb) / 105 => no plates");
+
+// Test 12: Hack Squat machine (105 lb starting weight) / 195 lb
+res = calculatePlateLoad(105, 195);
+assert.strictEqual(res.valid, true);
+assert.deepStrictEqual(res.platesPerSide, [45]);
+assert.strictEqual(res.weightPerSide, 45);
+assert.strictEqual(res.totalPlatesCount, 2);
+console.log("✓ Hack Squat (105 lb) / 195 => 45 each side");
+
+// Test 13: Hack Squat machine (105 lb starting weight) / 200 lb
+res = calculatePlateLoad(105, 200);
+assert.strictEqual(res.valid, true);
+assert.deepStrictEqual(res.platesPerSide, [45, 2.5]);
+assert.strictEqual(res.weightPerSide, 47.5);
+assert.strictEqual(res.totalPlatesCount, 4);
+console.log("✓ Hack Squat (105 lb) / 200 => 45 + 2.5 each side");
+
+// Test 14: Hack Squat machine (105 lb starting weight) / 100 lb (below starting weight)
+res = calculatePlateLoad(105, 100);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_BELOW_BAR");
+assert.strictEqual(res.message, "Target weight must be at least 105 lb for this bar.");
+console.log("✓ Invalid: Hack Squat (105 lb) / 100 => below starting weight error");
+
+// Test 15: Hack Squat machine (105 lb starting weight) / 197 lb (not loadable)
+res = calculatePlateLoad(105, 197);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_NOT_LOADABLE");
+assert.deepStrictEqual(res.closestWeights, [195, 200]);
+console.log("✓ Invalid: Hack Squat (105 lb) / 197 => not loadable exactly (closest 195, 200)");
+
+// Test 16: Leg Press machine (118 lb starting weight) / 208 lb
+res = calculatePlateLoad(118, 208);
+assert.strictEqual(res.valid, true);
+assert.deepStrictEqual(res.platesPerSide, [45]);
+assert.strictEqual(res.weightPerSide, 45);
+console.log("✓ Leg Press (118 lb) / 208 => 45 each side");
+
+console.log("\n--- Running Custom Equipment Storage & CRUD Tests ---");
+const { getAllBars, addCustomBar, deleteCustomBar } = require("../public/js/app.js");
+
+// Mock localStorage
+const mockStorage = {};
+global.localStorage = {
+  getItem: (k) => mockStorage[k] || null,
+  setItem: (k, v) => { mockStorage[k] = String(v); },
+  removeItem: (k) => { delete mockStorage[k]; }
+};
+
+assert.strictEqual(getAllBars().length, 4);
+
+// Test adding custom equipment
+const hackSquat = addCustomBar({ name: "Gold's Hack Squat", weight: 105 });
+assert.strictEqual(hackSquat.name, "Gold's Hack Squat");
+assert.strictEqual(hackSquat.weight, 105);
+assert.strictEqual(hackSquat.isCustom, true);
+assert.strictEqual(getAllBars().length, 5);
+console.log("✓ Successfully added custom equipment (Gold's Hack Squat, 105 lb)");
+
+// Test validation
+assert.throws(() => addCustomBar({ name: "", weight: 100 }), /Please enter an equipment name/);
+assert.throws(() => addCustomBar({ name: "Bad Weight", weight: 0 }), /Please enter a valid starting weight/);
+assert.throws(() => addCustomBar({ name: "Bad Weight", weight: -10 }), /Please enter a valid starting weight/);
+console.log("✓ Validation properly rejects empty name and non-positive weights");
+
+// Test deleting custom equipment
+deleteCustomBar(hackSquat.id);
+assert.strictEqual(getAllBars().length, 4);
+console.log("✓ Successfully removed custom equipment");
+
 console.log("\nALL TESTS PASSED SUCCESSFULLY!");

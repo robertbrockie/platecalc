@@ -6,8 +6,8 @@
 // Internal scaling factor to avoid floating-point inaccuracies
 const SCALE = 2; // 45 lb => 90 units, 2.5 lb => 5 units
 
-// Bar configurations
-const bars = [
+// Bar configurations (built-in defaults)
+const DEFAULT_BARS = [
   {
     id: "straight",
     name: "Straight Bar",
@@ -37,6 +37,65 @@ const bars = [
     weight: 25
   }
 ];
+
+const bars = DEFAULT_BARS;
+
+// Custom Equipment (Bars / Plate-Loaded Machines) helpers
+function getCustomBars() {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("platecalc_custom_bars");
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error("Failed to read custom bars", e);
+    return [];
+  }
+}
+
+function saveCustomBars(customBars) {
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.setItem("platecalc_custom_bars", JSON.stringify(customBars));
+    } catch (e) {
+      console.error("Failed to save custom bars", e);
+    }
+  }
+}
+
+function getAllBars() {
+  return [...DEFAULT_BARS, ...getCustomBars()];
+}
+
+function addCustomBar({ name, weight }) {
+  const trimmedName = (name || "").trim();
+  const numWeight = parseFloat(weight);
+  if (!trimmedName) {
+    throw new Error("Please enter an equipment name.");
+  }
+  if (isNaN(numWeight) || numWeight <= 0) {
+    throw new Error("Please enter a valid starting weight greater than 0.");
+  }
+  const id = "custom_" + Date.now();
+  const newBar = {
+    id,
+    name: trimmedName,
+    shortName: trimmedName,
+    label: `${trimmedName} — ${numWeight} lb`,
+    weight: numWeight,
+    isCustom: true
+  };
+  const list = getCustomBars();
+  list.push(newBar);
+  saveCustomBars(list);
+  return newBar;
+}
+
+function deleteCustomBar(id) {
+  const list = getCustomBars();
+  const updated = list.filter(b => b.id !== id);
+  saveCustomBars(updated);
+  return updated;
+}
 
 // Available plate configurations
 const plates = [
@@ -234,12 +293,18 @@ function calculatePlateLoad(barWeight, targetWeight) {
 // Export for Node testing if in commonjs environment
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
+    DEFAULT_BARS,
     bars,
     plates,
     getPlateDef,
     getPlateBreakdown,
     calculatePlateLoad,
-    SCALE
+    SCALE,
+    getCustomBars,
+    saveCustomBars,
+    getAllBars,
+    addCustomBar,
+    deleteCustomBar
   };
 }
 
@@ -249,7 +314,14 @@ if (typeof document !== "undefined") {
 }
 
 function initApp() {
-  const barSegmented = document.getElementById("bar-segmented");
+  const dropdownContainer = document.getElementById("bar-dropdown-container");
+  const dropdownTrigger = document.getElementById("bar-dropdown-trigger");
+  const dropdownMenu = document.getElementById("bar-dropdown-menu");
+  const dropdownOptionsList = document.getElementById("bar-options-list");
+  const dropdownCurrentName = document.getElementById("dropdown-current-name");
+  const dropdownCurrentWeight = document.getElementById("dropdown-current-weight");
+  const openAddModalBtn = document.getElementById("open-add-modal-btn");
+
   const barSelect = document.getElementById("bar-select");
   const targetInput = document.getElementById("target-weight");
   const stepUpBtn = document.getElementById("step-up-btn");
@@ -259,74 +331,252 @@ function initApp() {
   const emptyState = document.getElementById("empty-state");
   const errorContainer = document.getElementById("error-container");
 
+  // Modal elements
+  const addModal = document.getElementById("add-equipment-modal");
+  const addForm = document.getElementById("add-equipment-form");
+  const modalCloseBtn = document.getElementById("modal-close-btn");
+  const modalCancelBtn = document.getElementById("modal-cancel-btn");
+  const newEquipNameInput = document.getElementById("new-equip-name");
+  const newEquipWeightInput = document.getElementById("new-equip-weight");
+  const modalErrorMsg = document.getElementById("modal-error-msg");
+
+  let allBars = getAllBars();
   let currentBarId = localStorage.getItem("platecalc_last_bar") || "straight";
-  if (!bars.some(b => b.id === currentBarId)) {
+  if (!allBars.some(b => b.id === currentBarId)) {
     currentBarId = "straight";
   }
 
-  // Populate Segmented Bar Control
-  if (barSegmented) {
-    barSegmented.innerHTML = "";
-    bars.forEach(bar => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `segmented-pill ${bar.id === currentBarId ? "active" : ""}`;
-      btn.setAttribute("role", "radio");
-      btn.setAttribute("aria-checked", bar.id === currentBarId ? "true" : "false");
-      btn.setAttribute("data-bar-id", bar.id);
+  function getSelectedBar() {
+    allBars = getAllBars();
+    return allBars.find(b => b.id === currentBarId) || DEFAULT_BARS[0];
+  }
 
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "pill-name";
-      nameSpan.textContent = bar.shortName;
+  function updateTriggerDisplay(bar) {
+    if (dropdownCurrentName) dropdownCurrentName.textContent = bar.name;
+    if (dropdownCurrentWeight) dropdownCurrentWeight.textContent = `${bar.weight} lb`;
+  }
 
-      const wtSpan = document.createElement("span");
-      wtSpan.className = "pill-weight";
-      wtSpan.textContent = `${bar.weight} lb`;
+  function renderDropdown() {
+    allBars = getAllBars();
+    const selectedBar = getSelectedBar();
+    updateTriggerDisplay(selectedBar);
 
-      btn.appendChild(nameSpan);
-      btn.appendChild(wtSpan);
+    if (dropdownOptionsList) {
+      dropdownOptionsList.innerHTML = "";
+      allBars.forEach(bar => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = `dropdown-option ${bar.id === currentBarId ? "selected" : ""}`;
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", bar.id === currentBarId ? "true" : "false");
+        option.setAttribute("data-bar-id", bar.id);
 
-      btn.addEventListener("click", () => {
-        selectBar(bar.id);
+        const leftDiv = document.createElement("div");
+        leftDiv.className = "option-left";
+        leftDiv.innerHTML = `
+          <svg class="option-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span class="option-name">${bar.name}</span>
+        `;
+
+        const rightDiv = document.createElement("div");
+        rightDiv.className = "option-right";
+
+        if (bar.isCustom) {
+          const customBadge = document.createElement("span");
+          customBadge.className = "option-custom-badge";
+          customBadge.textContent = "Custom";
+          rightDiv.appendChild(customBadge);
+        }
+
+        const wtBadge = document.createElement("span");
+        wtBadge.className = "option-weight";
+        wtBadge.textContent = `${bar.weight} lb`;
+        rightDiv.appendChild(wtBadge);
+
+        if (bar.isCustom) {
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "option-delete-btn";
+          delBtn.setAttribute("aria-label", `Delete ${bar.name}`);
+          delBtn.setAttribute("title", `Delete ${bar.name}`);
+          delBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          `;
+          delBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (confirm(`Remove "${bar.name}" from your equipment?`)) {
+              deleteCustomBar(bar.id);
+              if (currentBarId === bar.id) {
+                selectBar("straight");
+              } else {
+                renderDropdown();
+              }
+            }
+          });
+          rightDiv.appendChild(delBtn);
+        }
+
+        option.appendChild(leftDiv);
+        option.appendChild(rightDiv);
+
+        option.addEventListener("click", () => {
+          selectBar(bar.id);
+          closeDropdown();
+        });
+
+        dropdownOptionsList.appendChild(option);
       });
+    }
 
-      barSegmented.appendChild(btn);
+    // Populate fallback select for accessibility
+    if (barSelect) {
+      barSelect.innerHTML = "";
+      allBars.forEach(bar => {
+        const option = document.createElement("option");
+        option.value = bar.id;
+        option.textContent = `${bar.name} (${bar.weight} lb)`;
+        barSelect.appendChild(option);
+      });
+      barSelect.value = currentBarId;
+    }
+  }
+
+  function selectBar(barId) {
+    allBars = getAllBars();
+    if (!allBars.some(b => b.id === barId)) {
+      barId = "straight";
+    }
+    currentBarId = barId;
+    localStorage.setItem("platecalc_last_bar", barId);
+    renderDropdown();
+    calculate();
+  }
+
+  function openDropdown() {
+    if (!dropdownContainer || !dropdownMenu) return;
+    dropdownContainer.classList.add("open");
+    dropdownMenu.classList.remove("hidden");
+    if (dropdownTrigger) dropdownTrigger.setAttribute("aria-expanded", "true");
+  }
+
+  function closeDropdown() {
+    if (!dropdownContainer || !dropdownMenu) return;
+    dropdownContainer.classList.remove("open");
+    dropdownMenu.classList.add("hidden");
+    if (dropdownTrigger) dropdownTrigger.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleDropdown() {
+    const isOpen = dropdownContainer && dropdownContainer.classList.contains("open");
+    if (isOpen) {
+      closeDropdown();
+    } else {
+      openDropdown();
+    }
+  }
+
+  if (dropdownTrigger) {
+    dropdownTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleDropdown();
     });
   }
 
-  // Populate fallback select for accessibility
-  if (barSelect) {
-    barSelect.innerHTML = "";
-    bars.forEach(bar => {
-      const option = document.createElement("option");
-      option.value = bar.id;
-      option.textContent = bar.label;
-      barSelect.appendChild(option);
+  // Click outside to close dropdown
+  document.addEventListener("click", (e) => {
+    if (dropdownContainer && !dropdownContainer.contains(e.target)) {
+      closeDropdown();
+    }
+  });
+
+  // Esc key closes dropdown or modal
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeDropdown();
+      closeModal();
+    }
+  });
+
+  // Modal event listeners
+  function openModal() {
+    closeDropdown();
+    if (modalErrorMsg) {
+      modalErrorMsg.textContent = "";
+      modalErrorMsg.classList.add("hidden");
+    }
+    if (newEquipNameInput) newEquipNameInput.value = "";
+    if (newEquipWeightInput) newEquipWeightInput.value = "";
+    if (addModal) {
+      addModal.classList.remove("hidden");
+      setTimeout(() => {
+        if (newEquipNameInput) newEquipNameInput.focus();
+      }, 50);
+    }
+  }
+
+  function closeModal() {
+    if (addModal) {
+      addModal.classList.add("hidden");
+    }
+  }
+
+  if (openAddModalBtn) {
+    openAddModalBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openModal();
     });
-    barSelect.value = currentBarId;
+  }
+
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener("click", closeModal);
+  }
+
+  if (modalCancelBtn) {
+    modalCancelBtn.addEventListener("click", closeModal);
+  }
+
+  if (addModal) {
+    addModal.addEventListener("click", (e) => {
+      if (e.target === addModal) {
+        closeModal();
+      }
+    });
+  }
+
+  if (addForm) {
+    addForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = newEquipNameInput ? newEquipNameInput.value.trim() : "";
+      const weight = newEquipWeightInput ? newEquipWeightInput.value.trim() : "";
+
+      try {
+        const newBar = addCustomBar({ name, weight });
+        closeModal();
+        selectBar(newBar.id);
+        targetInput.focus();
+      } catch (err) {
+        if (modalErrorMsg) {
+          modalErrorMsg.textContent = err.message;
+          modalErrorMsg.classList.remove("hidden");
+        }
+      }
+    });
+  }
+
+  // Fallback select change listener
+  if (barSelect) {
     barSelect.addEventListener("change", () => {
       selectBar(barSelect.value);
     });
   }
 
-  function selectBar(barId) {
-    currentBarId = barId;
-    localStorage.setItem("platecalc_last_bar", barId);
-
-    if (barSegmented) {
-      barSegmented.querySelectorAll(".segmented-pill").forEach(btn => {
-        const isActive = btn.getAttribute("data-bar-id") === barId;
-        btn.classList.toggle("active", isActive);
-        btn.setAttribute("aria-checked", isActive ? "true" : "false");
-      });
-    }
-
-    if (barSelect) {
-      barSelect.value = barId;
-    }
-
-    calculate();
-  }
+  // Initial render of dropdown
+  renderDropdown();
 
   // Stepper Adjusters
   function adjustWeight(delta) {
