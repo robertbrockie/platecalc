@@ -73,12 +73,9 @@
           </div>
         </div>
 
-        <!-- Milestone Presets -->
-        <div class="presets-row">
-          <div id="quick-weights" class="presets-list" role="group" aria-label="Quick weight presets">
-            <!-- Populated by js/app.js -->
-          </div>
-          <button type="button" id="clear-btn" class="clear-chip" title="Clear weight input">Clear</button>
+        <!-- Clear Action -->
+        <div class="clear-row">
+          <button type="button" id="clear-btn" class="clear-btn" title="Clear weight input">Clear</button>
         </div>
 
         <!-- Hidden submit for Enter key support -->
@@ -100,15 +97,10 @@
       <section id="results-container" class="glass-card results-card hidden" aria-live="polite">
         <!-- Results Header -->
         <div class="result-header">
-          <div class="result-headline">
-            <span id="res-target-weight" class="res-target-weight">315</span>
-            <span class="res-target-unit">LB</span>
-            <span class="res-dot">&bull;</span>
-            <span id="res-bar-name" class="res-bar-name">Straight (45)</span>
-          </div>
           <div class="res-badge-wrap">
             <span id="res-side-weight" class="res-side-badge">135 lb per side</span>
           </div>
+          <div id="res-bar-name" class="res-bar-name">Straight Bar (45 lb)</div>
         </div>
 
         <!-- Barbell Visualization Stage -->

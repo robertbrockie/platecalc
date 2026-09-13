@@ -255,7 +255,6 @@ function initApp() {
   const stepUpBtn = document.getElementById("step-up-btn");
   const stepDownBtn = document.getElementById("step-down-btn");
   const calcForm = document.getElementById("calc-form");
-  const quickWeightContainer = document.getElementById("quick-weights");
   const resultsContainer = document.getElementById("results-container");
   const emptyState = document.getElementById("empty-state");
   const errorContainer = document.getElementById("error-container");
@@ -329,25 +328,7 @@ function initApp() {
     calculate();
   }
 
-  // Quick weight milestone presets
-  const quickWeights = [95, 135, 185, 225, 275, 315, 365, 405];
-  if (quickWeightContainer) {
-    quickWeightContainer.innerHTML = "";
-    quickWeights.forEach(wt => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "quick-chip";
-      btn.textContent = `${wt} lb`;
-      btn.addEventListener("click", () => {
-        targetInput.value = wt;
-        calculate();
-        targetInput.focus();
-      });
-      quickWeightContainer.appendChild(btn);
-    });
-  }
-
-  // Stepper & Quick Delta Adjusters
+  // Stepper Adjusters
   function adjustWeight(delta) {
     const raw = targetInput.value.trim();
     const current = raw === "" ? getSelectedBar().weight : parseFloat(raw);
@@ -437,9 +418,14 @@ function initApp() {
     resultsContainer.classList.remove("hidden");
 
     // Update headline text
-    document.getElementById("res-target-weight").textContent = result.targetWeight;
-    document.getElementById("res-bar-name").textContent = `${selectedBar.shortName} (${selectedBar.weight})`;
-    document.getElementById("res-side-weight").textContent = `${result.weightPerSide} lb per side`;
+    const targetEl = document.getElementById("res-target-weight");
+    if (targetEl) targetEl.textContent = result.targetWeight;
+
+    const barNameEl = document.getElementById("res-bar-name");
+    if (barNameEl) barNameEl.textContent = `${selectedBar.shortName} (${selectedBar.weight} lb)`;
+
+    const sideWeightEl = document.getElementById("res-side-weight");
+    if (sideWeightEl) sideWeightEl.textContent = `${result.weightPerSide} lb per side`;
 
     // Render barbell visualization
     renderBarbell(result.platesPerSide);
