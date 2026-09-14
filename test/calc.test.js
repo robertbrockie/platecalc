@@ -237,6 +237,20 @@ assert.strictEqual(res.platesPerSide.reduce((a, b) => a + b, 0), 977.5);
 assert.strictEqual(res.totalPlatesCount, 48);
 console.log("✓ 2,000 lb load calculates correctly (977.5 lb per side, 48 plates total)");
 
+// MAX_TARGET_WEIGHT ceiling tests
+const { MAX_TARGET_WEIGHT } = require("../public/js/app.js");
+assert.strictEqual(MAX_TARGET_WEIGHT, 2000);
+res = calculatePlateLoad(45, 2001);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_EXCEEDS_MAX");
+assert.strictEqual(res.message, "Target weight cannot exceed 2000 lb.");
+assert.deepStrictEqual(res.closestWeights, [2000]);
+
+res = calculatePlateLoad(45, 99999);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_EXCEEDS_MAX");
+console.log("✓ Target weights > 2,000 lb safely return TARGET_EXCEEDS_MAX with closest weight suggestion [2000]");
+
 console.log("\n--- Running EquipmentStore Deep Module & Storage Resilience Tests ---");
 const { EquipmentStore, BarbellVisualizer, BreakdownView, ErrorView, safeStorage } = require("../public/js/app.js");
 
@@ -359,6 +373,81 @@ assert.strictEqual(typeof ErrorView.render, "function");
 assert.strictEqual(typeof ErrorView.clear, "function");
 ErrorView.clear({}); // Should run safely without throwing
 console.log("✓ ErrorView deep module interface verified");
+
+console.log("\n--- Running EquipmentDropdown Module Tests ---");
+const { EquipmentDropdown, EquipmentModal } = require("../public/js/app.js");
+assert.strictEqual(typeof EquipmentDropdown.init, "function");
+assert.strictEqual(typeof EquipmentDropdown.select, "function");
+assert.strictEqual(typeof EquipmentDropdown.open, "function");
+assert.strictEqual(typeof EquipmentDropdown.close, "function");
+assert.strictEqual(typeof EquipmentDropdown.toggle, "function");
+assert.strictEqual(typeof EquipmentDropdown.isOpen, "function");
+assert.strictEqual(typeof EquipmentDropdown.getSelectedId, "function");
+assert.strictEqual(typeof EquipmentDropdown.getSelectedBar, "function");
+
+// Mock element container for dropdown open/close/toggle testing
+const mockDropdownContainer = {
+  classList: {
+    _classes: new Set(),
+    add(c) { this._classes.add(c); },
+    remove(c) { this._classes.delete(c); },
+    contains(c) { return this._classes.has(c); }
+  }
+};
+const mockDropdownMenu = {
+  classList: {
+    _classes: new Set(["hidden"]),
+    add(c) { this._classes.add(c); },
+    remove(c) { this._classes.delete(c); },
+    contains(c) { return this._classes.has(c); }
+  }
+};
+
+let selectedBarCallback = null;
+EquipmentDropdown.init({
+  container: mockDropdownContainer,
+  menu: mockDropdownMenu
+}, {
+  onSelect: (bar) => { selectedBarCallback = bar; }
+});
+
+assert.strictEqual(EquipmentDropdown.isOpen(), false);
+EquipmentDropdown.open();
+assert.strictEqual(EquipmentDropdown.isOpen(), true);
+EquipmentDropdown.close();
+assert.strictEqual(EquipmentDropdown.isOpen(), false);
+EquipmentDropdown.toggle();
+assert.strictEqual(EquipmentDropdown.isOpen(), true);
+EquipmentDropdown.toggle();
+assert.strictEqual(EquipmentDropdown.isOpen(), false);
+
+EquipmentDropdown.select("trap");
+assert.strictEqual(EquipmentDropdown.getSelectedId(), "trap");
+assert.strictEqual(EquipmentDropdown.getSelectedBar().name, "Trap Bar");
+assert.strictEqual(selectedBarCallback && selectedBarCallback.id, "trap");
+console.log("✓ EquipmentDropdown deep module interface and state transitions verified");
+
+console.log("\n--- Running EquipmentModal Module Tests ---");
+assert.strictEqual(typeof EquipmentModal.init, "function");
+assert.strictEqual(typeof EquipmentModal.open, "function");
+assert.strictEqual(typeof EquipmentModal.close, "function");
+assert.strictEqual(typeof EquipmentModal.isOpen, "function");
+
+const mockModalEl = {
+  classList: {
+    _classes: new Set(["hidden"]),
+    add(c) { this._classes.add(c); },
+    remove(c) { this._classes.delete(c); },
+    contains(c) { return this._classes.has(c); }
+  }
+};
+EquipmentModal.init({ modalEl: mockModalEl });
+assert.strictEqual(EquipmentModal.isOpen(), false);
+mockModalEl.classList.remove("hidden");
+assert.strictEqual(EquipmentModal.isOpen(), true);
+EquipmentModal.close();
+assert.strictEqual(EquipmentModal.isOpen(), false);
+console.log("✓ EquipmentModal deep module interface and visibility toggles verified");
 
 console.log("\n--- Running Defensive barWeight Invariant Tests ---");
 [NaN, -45, -1, "straight", null, undefined, {}].forEach(badBar => {

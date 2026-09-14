@@ -6,6 +6,9 @@
 // Internal scaling factor to avoid floating-point inaccuracies
 const SCALE = 2; // 45 lb => 90 units, 2.5 lb => 5 units
 
+// Maximum supported target weight to prevent memory exhaustion and runaway DOM nodes
+const MAX_TARGET_WEIGHT = 2000;
+
 // Bar configurations (built-in defaults)
 const DEFAULT_BARS = [
   {
@@ -292,6 +295,17 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
     };
   }
 
+  if (targetWeight > MAX_TARGET_WEIGHT) {
+    return {
+      valid: false,
+      reason: "TARGET_EXCEEDS_MAX",
+      barWeight,
+      targetWeight,
+      message: `Target weight cannot exceed ${MAX_TARGET_WEIGHT} lb.`,
+      closestWeights: [MAX_TARGET_WEIGHT]
+    };
+  }
+
   const targetUnits = Math.round(targetWeight * SCALE);
   const barUnits = Math.round(barWeight * SCALE);
   const diffUnits = targetUnits - barUnits;
@@ -558,104 +572,150 @@ const ErrorView = {
   }
 };
 
-// Export for Node testing if in commonjs environment
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = {
-    EquipmentStore,
-    BarbellVisualizer,
-    BreakdownView,
-    ErrorView,
-    safeStorage,
-    STORAGE_KEYS,
-    DEFAULT_BARS,
-    bars,
-    plates,
-    getPlateDef,
-    getPlateBreakdown,
-    calculatePlateLoad,
-    SCALE,
-    getCustomBars,
-    saveCustomBars,
-    getAllBars,
-    addCustomBar,
-    deleteCustomBar
-  };
-}
+/**
+ * EquipmentDropdown: Deep module managing custom select dropdown, listbox keyboard navigation,
+ * and equipment deletion interactions.
+ */
+const EquipmentDropdown = {
+  _elements: null,
+  _callbacks: null,
+  _currentBarId: null,
 
-// Browser UI Controller
-if (typeof document !== "undefined") {
-  document.addEventListener("DOMContentLoaded", initApp);
-}
+  init(elements, callbacks = {}) {
+    this._elements = elements;
+    this._callbacks = callbacks;
 
-function initApp() {
-  const controlsCard = document.querySelector(".controls-card");
-  const dropdownContainer = document.getElementById("bar-dropdown-container");
-  const dropdownTrigger = document.getElementById("bar-dropdown-trigger");
-  const dropdownMenu = document.getElementById("bar-dropdown-menu");
-  const dropdownOptionsList = document.getElementById("bar-options-list");
-  const dropdownCurrentName = document.getElementById("dropdown-current-name");
-  const dropdownCurrentWeight = document.getElementById("dropdown-current-weight");
-  const openAddModalBtn = document.getElementById("open-add-modal-btn");
+    let initialBarId = EquipmentStore.getLastSelectedId();
+    if (!EquipmentStore.getById(initialBarId)) {
+      initialBarId = "straight";
+    }
+    this._currentBarId = initialBarId;
 
-  const barSelect = document.getElementById("bar-select");
-  const targetInput = document.getElementById("target-weight");
-  const stepUpBtn = document.getElementById("step-up-btn");
-  const stepDownBtn = document.getElementById("step-down-btn");
-  const calcForm = document.getElementById("calc-form");
-  const resultsContainer = document.getElementById("results-container");
-  const emptyState = document.getElementById("empty-state");
-  const errorContainer = document.getElementById("error-container");
+    const { trigger, openAddModalBtn, fallbackSelect } = this._elements;
 
-  // Modal elements
-  const addModal = document.getElementById("add-equipment-modal");
-  const addForm = document.getElementById("add-equipment-form");
-  const modalCloseBtn = document.getElementById("modal-close-btn");
-  const modalCancelBtn = document.getElementById("modal-cancel-btn");
-  const newEquipNameInput = document.getElementById("new-equip-name");
-  const newEquipWeightInput = document.getElementById("new-equip-weight");
-  const modalErrorMsg = document.getElementById("modal-error-msg");
+    if (trigger && typeof trigger.addEventListener === "function") {
+      trigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.toggle();
+      });
 
-  // Cached output and breakdown DOM elements
-  const errorMessageEl = document.getElementById("error-message");
-  const errorClosestEl = document.getElementById("error-closest");
-  const resBarNameEl = document.getElementById("res-bar-name");
-  const resSideWeightEl = document.getElementById("res-side-weight");
-  const barbellLeftContainer = document.getElementById("barbell-plates-left");
-  const barbellRightContainer = document.getElementById("barbell-plates-right");
-  const barbellEl = document.getElementById("barbell-visual");
-  const breakdownList = document.getElementById("breakdown-list");
-  const breakdownTotalPlates = document.getElementById("breakdown-total-plates");
-  const loadedPerSideEl = document.getElementById("summary-loaded-per-side");
-  const barWeightEl = document.getElementById("summary-bar-weight");
-  const totalWeightEl = document.getElementById("summary-total-weight");
+      trigger.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          this.open();
+          const list = this._elements.optionsList;
+          const activeOption = (list && list.querySelector(".dropdown-option.selected")) ||
+                               (list && list.querySelector(".dropdown-option"));
+          if (activeOption && typeof activeOption.focus === "function") activeOption.focus();
+        }
+      });
+    }
 
-  let currentBarId = EquipmentStore.getLastSelectedId();
-  if (!EquipmentStore.getById(currentBarId)) {
-    currentBarId = "straight";
-  }
+    if (openAddModalBtn && typeof openAddModalBtn.addEventListener === "function") {
+      openAddModalBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (typeof this._callbacks.onOpenModal === "function") {
+          this._callbacks.onOpenModal();
+        }
+      });
 
-  function getSelectedBar() {
-    return EquipmentStore.getById(currentBarId) || EquipmentStore.getBuiltIn()[0];
-  }
+      openAddModalBtn.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const list = this._elements.optionsList;
+          const last = list ? list.lastElementChild : null;
+          if (last && typeof last.focus === "function") last.focus();
+        }
+      });
+    }
 
-  function updateTriggerDisplay(bar) {
-    if (dropdownCurrentName) dropdownCurrentName.textContent = bar.name;
-    if (dropdownCurrentWeight) dropdownCurrentWeight.textContent = `${bar.weight} lb`;
-  }
+    if (fallbackSelect && typeof fallbackSelect.addEventListener === "function") {
+      fallbackSelect.addEventListener("change", () => {
+        this.select(fallbackSelect.value);
+      });
+    }
 
-  function renderDropdown() {
+    if (typeof document !== "undefined") {
+      document.addEventListener("click", (e) => {
+        if (this._elements && this._elements.container && !this._elements.container.contains(e.target)) {
+          this.close();
+        }
+      });
+    }
+
+    this.render();
+    return this;
+  },
+
+  getSelectedId() {
+    return this._currentBarId;
+  },
+
+  getSelectedBar() {
+    return EquipmentStore.getById(this._currentBarId) || EquipmentStore.getBuiltIn()[0];
+  },
+
+  isOpen() {
+    const { container } = this._elements || {};
+    return Boolean(container && container.classList.contains("open"));
+  },
+
+  open() {
+    const { container, menu, trigger, controlsCard } = this._elements || {};
+    if (!container || !menu) return;
+    container.classList.add("open");
+    menu.classList.remove("hidden");
+    if (controlsCard) controlsCard.classList.add("has-dropdown-open");
+    if (trigger) trigger.setAttribute("aria-expanded", "true");
+  },
+
+  close() {
+    const { container, menu, trigger, controlsCard } = this._elements || {};
+    if (!container || !menu) return;
+    container.classList.remove("open");
+    menu.classList.add("hidden");
+    if (controlsCard) controlsCard.classList.remove("has-dropdown-open");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  },
+
+  toggle() {
+    if (this.isOpen()) {
+      this.close();
+    } else {
+      this.open();
+    }
+  },
+
+  select(barId) {
+    if (!EquipmentStore.getById(barId)) {
+      barId = "straight";
+    }
+    this._currentBarId = barId;
+    EquipmentStore.setLastSelectedId(barId);
+    this.render();
+    if (this._callbacks && typeof this._callbacks.onSelect === "function") {
+      this._callbacks.onSelect(this.getSelectedBar());
+    }
+  },
+
+  render() {
+    if (!this._elements) return;
+    const { optionsList, currentNameEl, currentWeightEl, fallbackSelect, trigger, openAddModalBtn } = this._elements;
     const allBars = EquipmentStore.getAll();
-    const selectedBar = getSelectedBar();
-    updateTriggerDisplay(selectedBar);
+    const selectedBar = this.getSelectedBar();
 
-    if (dropdownOptionsList) {
-      dropdownOptionsList.innerHTML = "";
+    if (currentNameEl) currentNameEl.textContent = selectedBar.name;
+    if (currentWeightEl) currentWeightEl.textContent = `${selectedBar.weight} lb`;
+
+    if (optionsList) {
+      optionsList.innerHTML = "";
       allBars.forEach(bar => {
         const option = document.createElement("div");
-        option.className = `dropdown-option ${bar.id === currentBarId ? "selected" : ""}`;
+        const isSelected = bar.id === this._currentBarId;
+        option.className = `dropdown-option ${isSelected ? "selected" : ""}`;
         option.setAttribute("role", "option");
         option.setAttribute("tabindex", "0");
-        option.setAttribute("aria-selected", bar.id === currentBarId ? "true" : "false");
+        option.setAttribute("aria-selected", isSelected ? "true" : "false");
         option.setAttribute("data-bar-id", bar.id);
 
         const leftDiv = document.createElement("div");
@@ -699,10 +759,10 @@ function initApp() {
             e.stopPropagation();
             if (confirm(`Remove "${bar.name}" from your equipment?`)) {
               EquipmentStore.delete(bar.id);
-              if (currentBarId === bar.id) {
-                selectBar("straight");
+              if (this._currentBarId === bar.id) {
+                this.select("straight");
               } else {
-                renderDropdown();
+                this.render();
               }
             }
           });
@@ -713,16 +773,16 @@ function initApp() {
         option.appendChild(rightDiv);
 
         option.addEventListener("click", () => {
-          selectBar(bar.id);
-          closeDropdown();
+          this.select(bar.id);
+          this.close();
         });
 
         option.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            selectBar(bar.id);
-            closeDropdown();
-            if (dropdownTrigger) dropdownTrigger.focus();
+            this.select(bar.id);
+            this.close();
+            if (trigger) trigger.focus();
           } else if (e.key === "ArrowDown") {
             e.preventDefault();
             const nextOpt = option.nextElementSibling;
@@ -736,235 +796,288 @@ function initApp() {
             const prevOpt = option.previousElementSibling;
             if (prevOpt) {
               prevOpt.focus();
-            } else if (dropdownTrigger) {
-              dropdownTrigger.focus();
+            } else if (trigger) {
+              trigger.focus();
             }
           } else if (e.key === "Home") {
             e.preventDefault();
-            const first = dropdownOptionsList.firstElementChild;
+            const first = optionsList.firstElementChild;
             if (first) first.focus();
           } else if (e.key === "End") {
             e.preventDefault();
-            const last = dropdownOptionsList.lastElementChild;
+            const last = optionsList.lastElementChild;
             if (last) last.focus();
           }
         });
 
-        dropdownOptionsList.appendChild(option);
+        optionsList.appendChild(option);
       });
     }
 
-    // Populate fallback select for accessibility
-    if (barSelect) {
-      barSelect.innerHTML = "";
+    if (fallbackSelect) {
+      fallbackSelect.innerHTML = "";
       allBars.forEach(bar => {
         const option = document.createElement("option");
         option.value = bar.id;
         option.textContent = `${bar.name} (${bar.weight} lb)`;
-        barSelect.appendChild(option);
+        fallbackSelect.appendChild(option);
       });
-      barSelect.value = currentBarId;
+      fallbackSelect.value = this._currentBarId;
     }
   }
+};
 
-  function selectBar(barId) {
-    if (!EquipmentStore.getById(barId)) {
-      barId = "straight";
+/**
+ * EquipmentModal: Deep module managing custom equipment creation dialog, focus trapping,
+ * and form validation lifecycle.
+ */
+const EquipmentModal = {
+  _elements: null,
+  _callbacks: null,
+  _triggerElement: null,
+
+  init(elements, callbacks = {}) {
+    this._elements = elements;
+    this._callbacks = callbacks;
+
+    const { modalEl, formEl, closeBtn, cancelBtn } = this._elements;
+
+    if (closeBtn && typeof closeBtn.addEventListener === "function") {
+      closeBtn.addEventListener("click", () => this.close());
     }
-    currentBarId = barId;
-    EquipmentStore.setLastSelectedId(barId);
-    renderDropdown();
-    calculate();
-  }
 
-  function openDropdown() {
-    if (!dropdownContainer || !dropdownMenu) return;
-    dropdownContainer.classList.add("open");
-    dropdownMenu.classList.remove("hidden");
-    if (controlsCard) controlsCard.classList.add("has-dropdown-open");
-    if (dropdownTrigger) dropdownTrigger.setAttribute("aria-expanded", "true");
-  }
-
-  function closeDropdown() {
-    if (!dropdownContainer || !dropdownMenu) return;
-    dropdownContainer.classList.remove("open");
-    dropdownMenu.classList.add("hidden");
-    if (controlsCard) controlsCard.classList.remove("has-dropdown-open");
-    if (dropdownTrigger) dropdownTrigger.setAttribute("aria-expanded", "false");
-  }
-
-  function toggleDropdown() {
-    const isOpen = dropdownContainer && dropdownContainer.classList.contains("open");
-    if (isOpen) {
-      closeDropdown();
-    } else {
-      openDropdown();
+    if (cancelBtn && typeof cancelBtn.addEventListener === "function") {
+      cancelBtn.addEventListener("click", () => this.close());
     }
-  }
 
-  if (dropdownTrigger) {
-    dropdownTrigger.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleDropdown();
-    });
+    if (modalEl && typeof modalEl.addEventListener === "function") {
+      modalEl.addEventListener("click", (e) => {
+        if (e.target === modalEl) {
+          this.close();
+        }
+      });
 
-    dropdownTrigger.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      // Trap focus inside modal
+      modalEl.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") {
+          const focusable = modalEl.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          const focusableArr = Array.from(focusable).filter(
+            el => !el.disabled && el.offsetParent !== null
+          );
+          if (focusableArr.length === 0) return;
+          const first = focusableArr[0];
+          const last = focusableArr[focusableArr.length - 1];
+
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      });
+    }
+
+    if (formEl && typeof formEl.addEventListener === "function") {
+      formEl.addEventListener("submit", (e) => {
         e.preventDefault();
-        openDropdown();
-        const activeOption = (dropdownOptionsList && dropdownOptionsList.querySelector(".dropdown-option.active")) ||
-                             (dropdownOptionsList && dropdownOptionsList.querySelector(".dropdown-option"));
-        if (activeOption) activeOption.focus();
-      }
-    });
-  }
+        const { nameInput, weightInput, errorEl } = this._elements;
+        const name = nameInput ? nameInput.value.trim() : "";
+        const weight = weightInput ? weightInput.value.trim() : "";
 
-  // Click outside to close dropdown
-  document.addEventListener("click", (e) => {
-    if (dropdownContainer && !dropdownContainer.contains(e.target)) {
-      closeDropdown();
+        try {
+          const newBar = EquipmentStore.add({ name, weight });
+          this.close();
+          if (this._callbacks && typeof this._callbacks.onSave === "function") {
+            this._callbacks.onSave(newBar);
+          }
+        } catch (err) {
+          if (errorEl) {
+            errorEl.textContent = err.message;
+            errorEl.classList.remove("hidden");
+          }
+        }
+      });
     }
-  });
 
-  // Esc key closes dropdown or modal and restores focus
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      const isModalOpen = addModal && !addModal.classList.contains("hidden");
-      const isDropdownOpen = dropdownContainer && dropdownContainer.classList.contains("open");
-      if (isModalOpen) {
-        closeModal();
-      } else if (isDropdownOpen) {
-        closeDropdown();
-        if (dropdownTrigger) dropdownTrigger.focus();
-      }
+    return this;
+  },
+
+  isOpen() {
+    const { modalEl } = this._elements || {};
+    return Boolean(modalEl && !modalEl.classList.contains("hidden"));
+  },
+
+  open(triggerEl = null) {
+    this._triggerElement = triggerEl || (typeof document !== "undefined" ? document.activeElement : null);
+    const { modalEl, nameInput, weightInput, errorEl } = this._elements || {};
+
+    if (errorEl) {
+      errorEl.textContent = "";
+      errorEl.classList.add("hidden");
     }
-  });
+    if (nameInput) nameInput.value = "";
+    if (weightInput) weightInput.value = "";
 
-  let modalTriggerElement = null;
-
-  // Modal event listeners
-  function openModal() {
-    modalTriggerElement = document.activeElement;
-    closeDropdown();
-    if (modalErrorMsg) {
-      modalErrorMsg.textContent = "";
-      modalErrorMsg.classList.add("hidden");
-    }
-    if (newEquipNameInput) newEquipNameInput.value = "";
-    if (newEquipWeightInput) newEquipWeightInput.value = "";
-    if (addModal) {
-      addModal.classList.remove("hidden");
+    if (modalEl) {
+      modalEl.classList.remove("hidden");
       setTimeout(() => {
-        if (newEquipNameInput) newEquipNameInput.focus();
+        if (nameInput) nameInput.focus();
       }, 50);
     }
-  }
+  },
 
-  function closeModal() {
-    if (addModal) {
-      addModal.classList.add("hidden");
+  close() {
+    const { modalEl } = this._elements || {};
+    if (modalEl) {
+      modalEl.classList.add("hidden");
     }
-    if (modalTriggerElement && typeof modalTriggerElement.focus === "function") {
-      modalTriggerElement.focus();
-    } else if (dropdownTrigger) {
-      dropdownTrigger.focus();
+    if (this._triggerElement && typeof this._triggerElement.focus === "function") {
+      this._triggerElement.focus();
     }
   }
+};
 
-  if (openAddModalBtn) {
-    openAddModalBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openModal();
-    });
+// Export for Node testing if in commonjs environment
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    EquipmentStore,
+    EquipmentDropdown,
+    EquipmentModal,
+    BarbellVisualizer,
+    BreakdownView,
+    ErrorView,
+    safeStorage,
+    STORAGE_KEYS,
+    DEFAULT_BARS,
+    MAX_TARGET_WEIGHT,
+    bars,
+    plates,
+    getPlateDef,
+    getPlateBreakdown,
+    calculatePlateLoad,
+    SCALE,
+    getCustomBars,
+    saveCustomBars,
+    getAllBars,
+    addCustomBar,
+    deleteCustomBar
+  };
+}
 
-    openAddModalBtn.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        const last = dropdownOptionsList ? dropdownOptionsList.lastElementChild : null;
-        if (last) last.focus();
+// Browser UI Controller
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", initApp);
+}
+
+function initApp() {
+  const controlsCard = document.querySelector(".controls-card");
+  const dropdownContainer = document.getElementById("bar-dropdown-container");
+  const dropdownTrigger = document.getElementById("bar-dropdown-trigger");
+  const dropdownMenu = document.getElementById("bar-dropdown-menu");
+  const dropdownOptionsList = document.getElementById("bar-options-list");
+  const dropdownCurrentName = document.getElementById("dropdown-current-name");
+  const dropdownCurrentWeight = document.getElementById("dropdown-current-weight");
+  const openAddModalBtn = document.getElementById("open-add-modal-btn");
+  const barSelect = document.getElementById("bar-select");
+
+  const targetInput = document.getElementById("target-weight");
+  const stepUpBtn = document.getElementById("step-up-btn");
+  const stepDownBtn = document.getElementById("step-down-btn");
+  const clearBtn = document.getElementById("clear-btn");
+  const calcForm = document.getElementById("calc-form");
+  const resultsContainer = document.getElementById("results-container");
+  const emptyState = document.getElementById("empty-state");
+  const errorContainer = document.getElementById("error-container");
+
+  // Modal elements
+  const addModal = document.getElementById("add-equipment-modal");
+  const addForm = document.getElementById("add-equipment-form");
+  const modalCloseBtn = document.getElementById("modal-close-btn");
+  const modalCancelBtn = document.getElementById("modal-cancel-btn");
+  const newEquipNameInput = document.getElementById("new-equip-name");
+  const newEquipWeightInput = document.getElementById("new-equip-weight");
+  const modalErrorMsg = document.getElementById("modal-error-msg");
+
+  // Cached output and breakdown DOM elements
+  const errorMessageEl = document.getElementById("error-message");
+  const errorClosestEl = document.getElementById("error-closest");
+  const resBarNameEl = document.getElementById("res-bar-name");
+  const resSideWeightEl = document.getElementById("res-side-weight");
+  const barbellLeftContainer = document.getElementById("barbell-plates-left");
+  const barbellRightContainer = document.getElementById("barbell-plates-right");
+  const barbellEl = document.getElementById("barbell-visual");
+  const breakdownList = document.getElementById("breakdown-list");
+  const breakdownTotalPlates = document.getElementById("breakdown-total-plates");
+  const loadedPerSideEl = document.getElementById("summary-loaded-per-side");
+  const barWeightEl = document.getElementById("summary-bar-weight");
+  const totalWeightEl = document.getElementById("summary-total-weight");
+
+  // Initialize Equipment Dropdown module
+  EquipmentDropdown.init({
+    container: dropdownContainer,
+    trigger: dropdownTrigger,
+    menu: dropdownMenu,
+    optionsList: dropdownOptionsList,
+    currentNameEl: dropdownCurrentName,
+    currentWeightEl: dropdownCurrentWeight,
+    fallbackSelect: barSelect,
+    controlsCard,
+    openAddModalBtn
+  }, {
+    onSelect: () => calculate(),
+    onOpenModal: () => {
+      EquipmentDropdown.close();
+      EquipmentModal.open(dropdownTrigger);
+    }
+  });
+
+  // Initialize Equipment Modal module
+  EquipmentModal.init({
+    modalEl: addModal,
+    formEl: addForm,
+    closeBtn: modalCloseBtn,
+    cancelBtn: modalCancelBtn,
+    nameInput: newEquipNameInput,
+    weightInput: newEquipWeightInput,
+    errorEl: modalErrorMsg
+  }, {
+    onSave: (newBar) => {
+      EquipmentDropdown.select(newBar.id);
+      const isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      if (!isTouch && targetInput) {
+        targetInput.focus();
       }
-    });
-  }
+    }
+  });
 
-  if (modalCloseBtn) {
-    modalCloseBtn.addEventListener("click", closeModal);
-  }
-
-  if (modalCancelBtn) {
-    modalCancelBtn.addEventListener("click", closeModal);
-  }
-
-  if (addModal) {
-    addModal.addEventListener("click", (e) => {
-      if (e.target === addModal) {
-        closeModal();
+  // Global Escape key handler
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (EquipmentModal.isOpen()) {
+        EquipmentModal.close();
+      } else if (EquipmentDropdown.isOpen()) {
+        EquipmentDropdown.close();
+        if (dropdownTrigger) dropdownTrigger.focus();
+      } else if (targetInput && targetInput.value !== "") {
+        targetInput.value = "";
+        calculate();
       }
-    });
-
-    // Trap focus inside modal
-    addModal.addEventListener("keydown", (e) => {
-      if (e.key === "Tab") {
-        const focusable = addModal.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
-        const focusableArr = Array.from(focusable).filter(
-          el => !el.disabled && el.offsetParent !== null
-        );
-        if (focusableArr.length === 0) return;
-        const first = focusableArr[0];
-        const last = focusableArr[focusableArr.length - 1];
-
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    });
-  }
-
-  if (addForm) {
-    addForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const name = newEquipNameInput ? newEquipNameInput.value.trim() : "";
-      const weight = newEquipWeightInput ? newEquipWeightInput.value.trim() : "";
-
-      try {
-        const newBar = EquipmentStore.add({ name, weight });
-        closeModal();
-        selectBar(newBar.id);
-        const isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-        if (!isTouch) {
-          targetInput.focus();
-        }
-      } catch (err) {
-        if (modalErrorMsg) {
-          modalErrorMsg.textContent = err.message;
-          modalErrorMsg.classList.remove("hidden");
-        }
-      }
-    });
-  }
-
-  // Fallback select change listener
-  if (barSelect) {
-    barSelect.addEventListener("change", () => {
-      selectBar(barSelect.value);
-    });
-  }
-
-  // Initial render of dropdown
-  renderDropdown();
+    }
+  });
 
   // Stepper Adjusters
   function adjustWeight(delta) {
+    if (!targetInput) return;
     const raw = targetInput.value.trim();
-    const current = raw === "" ? getSelectedBar().weight : parseFloat(raw);
-    let next = isNaN(current) ? getSelectedBar().weight : current + delta;
+    const selectedBar = EquipmentDropdown.getSelectedBar();
+    const current = raw === "" ? selectedBar.weight : parseFloat(raw);
+    let next = isNaN(current) ? selectedBar.weight : current + delta;
     if (next < 0) next = 0;
-    if (next > 2000) next = 2000;
+    if (next > MAX_TARGET_WEIGHT) next = MAX_TARGET_WEIGHT;
     targetInput.value = next;
     calculate();
     // Only maintain focus if already focused, avoiding mobile virtual keyboard popup
@@ -986,20 +1099,22 @@ function initApp() {
   }, { passive: false });
 
   // Target input events
-  targetInput.addEventListener("input", calculate);
+  if (targetInput) {
+    targetInput.addEventListener("input", calculate);
 
-  // Keyboard arrow stepper (5 lb increments, or 25 lb with Shift)
-  targetInput.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      const delta = e.shiftKey ? 25 : 5;
-      adjustWeight(delta);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      const delta = e.shiftKey ? -25 : -5;
-      adjustWeight(delta);
-    }
-  });
+    // Keyboard arrow stepper (5 lb increments, or 25 lb with Shift)
+    targetInput.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const delta = e.shiftKey ? 25 : 5;
+        adjustWeight(delta);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const delta = e.shiftKey ? -25 : -5;
+        adjustWeight(delta);
+      }
+    });
+  }
 
   if (calcForm) {
     calcForm.addEventListener("submit", (e) => {
@@ -1009,24 +1124,23 @@ function initApp() {
   }
 
   // Clear button
-  const clearBtn = document.getElementById("clear-btn");
   if (clearBtn) {
     clearBtn.addEventListener("click", () => {
-      targetInput.value = "";
+      if (targetInput) {
+        targetInput.value = "";
+      }
       calculate();
       const isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-      if (!isTouch) {
+      if (!isTouch && targetInput) {
         targetInput.focus();
       }
     });
   }
 
-  // Initial calculation check
-  calculate();
-
   function calculate() {
+    if (!targetInput) return;
     const rawVal = targetInput.value.trim();
-    const selectedBar = getSelectedBar();
+    const selectedBar = EquipmentDropdown.getSelectedBar();
 
     // Default/blank state
     if (rawVal === "") {
@@ -1045,9 +1159,9 @@ function initApp() {
   }
 
   function showEmptyState() {
-    emptyState.classList.remove("hidden");
-    errorContainer.classList.add("hidden");
-    resultsContainer.classList.add("hidden");
+    if (emptyState) emptyState.classList.remove("hidden");
+    if (errorContainer) errorContainer.classList.add("hidden");
+    if (resultsContainer) resultsContainer.classList.add("hidden");
     BarbellVisualizer.clear({
       leftContainer: barbellLeftContainer,
       rightContainer: barbellRightContainer,
@@ -1067,9 +1181,9 @@ function initApp() {
   }
 
   function showErrorState(result) {
-    emptyState.classList.add("hidden");
-    resultsContainer.classList.add("hidden");
-    errorContainer.classList.remove("hidden");
+    if (emptyState) emptyState.classList.add("hidden");
+    if (resultsContainer) resultsContainer.classList.add("hidden");
+    if (errorContainer) errorContainer.classList.remove("hidden");
     BarbellVisualizer.clear({
       leftContainer: barbellLeftContainer,
       rightContainer: barbellRightContainer,
@@ -1087,16 +1201,18 @@ function initApp() {
       { messageEl: errorMessageEl, closestEl: errorClosestEl },
       result,
       (weight) => {
-        targetInput.value = weight;
+        if (targetInput) {
+          targetInput.value = weight;
+        }
         calculate();
       }
     );
   }
 
   function showResultState(result, selectedBar) {
-    emptyState.classList.add("hidden");
-    errorContainer.classList.add("hidden");
-    resultsContainer.classList.remove("hidden");
+    if (emptyState) emptyState.classList.add("hidden");
+    if (errorContainer) errorContainer.classList.add("hidden");
+    if (resultsContainer) resultsContainer.classList.remove("hidden");
 
     if (resBarNameEl) resBarNameEl.textContent = `${selectedBar.shortName} (${selectedBar.weight} lb)`;
     if (resSideWeightEl) resSideWeightEl.textContent = `${result.weightPerSide} lb per side`;
@@ -1122,6 +1238,9 @@ function initApp() {
       closestEl: errorClosestEl
     });
   }
+
+  // Initial calculation check
+  calculate();
 
   // Register Service Worker for offline gym use & PWA install
   if ("serviceWorker" in navigator) {
