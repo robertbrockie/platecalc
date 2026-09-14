@@ -174,4 +174,93 @@ deleteCustomBar(hackSquat.id);
 assert.strictEqual(getAllBars().length, 4);
 console.log("✓ Successfully removed custom equipment");
 
+console.log("\n--- Running Input Robustness & Invariant Tests ---");
+
+// Non-numeric inputs
+[NaN, "abc", null, undefined, {}].forEach(badInput => {
+  const r = calculatePlateLoad(45, badInput);
+  assert.strictEqual(r.valid, false);
+  assert.strictEqual(r.reason, "INVALID_INPUT");
+  assert.strictEqual(r.message, "Please enter a valid target weight.");
+});
+console.log("✓ All non-numeric target inputs safely return INVALID_INPUT");
+
+// Negative target weight
+res = calculatePlateLoad(45, -20);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_BELOW_BAR");
+console.log("✓ Negative target weights safely return TARGET_BELOW_BAR");
+
+// Half-pound precision calculations
+res = calculatePlateLoad(15.5, 20.5);
+assert.strictEqual(res.valid, true);
+assert.deepStrictEqual(res.platesPerSide, [2.5]);
+assert.strictEqual(res.weightPerSide, 2.5);
+console.log("✓ Half-pound bar (15.5 lb) with target (20.5 lb) loads 2.5 lb plate per side");
+
+// Target with invalid plate increment (137.5 lb on 45 lb bar)
+res = calculatePlateLoad(45, 137.5);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_NOT_LOADABLE");
+assert.deepStrictEqual(res.closestWeights, [135, 140]);
+console.log("✓ Decimal target 137.5 lb suggests closest valid weights [135, 140]");
+
+// Closest weight bounds test (46 lb on 45 lb bar does not suggest weights < 45)
+res = calculatePlateLoad(45, 46);
+assert.strictEqual(res.valid, false);
+assert.deepStrictEqual(res.closestWeights, [45, 50]);
+console.log("✓ Near-bar weight 46 lb bounds lower suggestion to bar weight [45, 50]");
+
+// Closest weight for 52 lb on 45 lb bar
+res = calculatePlateLoad(45, 52);
+assert.strictEqual(res.valid, false);
+assert.deepStrictEqual(res.closestWeights, [50, 55]);
+console.log("✓ Target 52 lb suggests closest weights [50, 55]");
+
+console.log("\n--- Running Heavy Powerlifting Load Stress Tests ---");
+
+// 1,000 lb load
+res = calculatePlateLoad(45, 1000);
+assert.strictEqual(res.valid, true);
+assert.strictEqual(res.weightPerSide, 477.5);
+assert.strictEqual(res.platesPerSide.reduce((a, b) => a + b, 0), 477.5);
+assert.strictEqual(res.totalPlatesCount, 24); // (10×45 + 1×25 + 1×2.5) * 2
+console.log("✓ 1,000 lb load calculates correctly (477.5 lb per side, 24 plates total)");
+
+// 2,000 lb load
+res = calculatePlateLoad(45, 2000);
+assert.strictEqual(res.valid, true);
+assert.strictEqual(res.weightPerSide, 977.5);
+assert.strictEqual(res.platesPerSide.reduce((a, b) => a + b, 0), 977.5);
+assert.strictEqual(res.totalPlatesCount, 48);
+console.log("✓ 2,000 lb load calculates correctly (977.5 lb per side, 48 plates total)");
+
+console.log("\n--- Running EquipmentStore Deep Module & Storage Resilience Tests ---");
+const { EquipmentStore, safeStorage } = require("../public/js/app.js");
+
+// Built-in checks
+assert.strictEqual(EquipmentStore.getBuiltIn().length, 4);
+assert.strictEqual(EquipmentStore.getById("straight").weight, 45);
+assert.strictEqual(EquipmentStore.getById("nonexistent"), null);
+console.log("✓ EquipmentStore.getBuiltIn and getById resolve correctly");
+
+// Last selected bar tracking
+EquipmentStore.setLastSelectedId("trap");
+assert.strictEqual(EquipmentStore.getLastSelectedId(), "trap");
+console.log("✓ EquipmentStore tracks and persists last selected bar");
+
+// Corrupted JSON resilience
+mockStorage["platecalc_custom_bars"] = "INVALID_CORRUPTED_JSON{{{";
+const safeBars = EquipmentStore.getCustom();
+assert.deepStrictEqual(safeBars, []);
+console.log("✓ EquipmentStore handles corrupted storage without throwing");
+
+// QuotaExceeded / storage write failure resilience
+const origSetItem = global.localStorage.setItem;
+global.localStorage.setItem = () => { throw new Error("QuotaExceededError"); };
+const writeSuccess = safeStorage.set("test_key", "value");
+assert.strictEqual(writeSuccess, false);
+console.log("✓ safeStorage safely catches storage exceptions in restricted contexts");
+global.localStorage.setItem = origSetItem;
+
 console.log("\nALL TESTS PASSED SUCCESSFULLY!");

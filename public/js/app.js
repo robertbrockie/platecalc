@@ -40,62 +40,117 @@ const DEFAULT_BARS = [
 
 const bars = DEFAULT_BARS;
 
-// Custom Equipment (Bars / Plate-Loaded Machines) helpers
-function getCustomBars() {
-  if (typeof localStorage === "undefined") return [];
-  try {
-    const raw = localStorage.getItem("platecalc_custom_bars");
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.error("Failed to read custom bars", e);
-    return [];
-  }
-}
+// Storage keys
+const STORAGE_KEYS = {
+  CUSTOM_BARS: "platecalc_custom_bars",
+  LAST_BAR: "platecalc_last_bar"
+};
 
-function saveCustomBars(customBars) {
-  if (typeof localStorage !== "undefined") {
+/**
+ * Safe storage wrapper to prevent exceptions in private browsing or restricted environments.
+ */
+const safeStorage = {
+  get(key, fallback = null) {
+    if (typeof localStorage === "undefined") return fallback;
     try {
-      localStorage.setItem("platecalc_custom_bars", JSON.stringify(customBars));
+      const val = localStorage.getItem(key);
+      return val !== null ? val : fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  getJSON(key, fallback = null) {
+    const raw = this.get(key);
+    if (!raw) return fallback;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  },
+  set(key, value) {
+    if (typeof localStorage === "undefined") return false;
+    try {
+      const serialized = typeof value === "string" ? value : JSON.stringify(value);
+      localStorage.setItem(key, serialized);
+      return true;
     } catch (e) {
-      console.error("Failed to save custom bars", e);
+      console.warn(`Storage write failed for key "${key}":`, e);
+      return false;
     }
   }
-}
+};
 
-function getAllBars() {
-  return [...DEFAULT_BARS, ...getCustomBars()];
-}
+/**
+ * EquipmentStore: Deep module providing equipment management and persistence.
+ */
+const EquipmentStore = {
+  getBuiltIn() {
+    return DEFAULT_BARS;
+  },
 
-function addCustomBar({ name, weight }) {
-  const trimmedName = (name || "").trim();
-  const numWeight = parseFloat(weight);
-  if (!trimmedName) {
-    throw new Error("Please enter an equipment name.");
+  getCustom() {
+    return safeStorage.getJSON(STORAGE_KEYS.CUSTOM_BARS, []) || [];
+  },
+
+  saveCustom(customBars) {
+    safeStorage.set(STORAGE_KEYS.CUSTOM_BARS, customBars);
+  },
+
+  getAll() {
+    return [...this.getBuiltIn(), ...this.getCustom()];
+  },
+
+  getById(id) {
+    return this.getAll().find(b => b.id === id) || null;
+  },
+
+  add({ name, weight }) {
+    const trimmedName = (name || "").trim();
+    const numWeight = parseFloat(weight);
+    if (!trimmedName) {
+      throw new Error("Please enter an equipment name.");
+    }
+    if (isNaN(numWeight) || numWeight <= 0) {
+      throw new Error("Please enter a valid starting weight greater than 0.");
+    }
+    const id = "custom_" + Date.now();
+    const newBar = {
+      id,
+      name: trimmedName,
+      shortName: trimmedName,
+      label: `${trimmedName} — ${numWeight} lb`,
+      weight: numWeight,
+      isCustom: true
+    };
+    const list = this.getCustom();
+    list.push(newBar);
+    this.saveCustom(list);
+    return newBar;
+  },
+
+  delete(id) {
+    const list = this.getCustom();
+    const updated = list.filter(b => b.id !== id);
+    this.saveCustom(updated);
+    return updated;
+  },
+
+  getLastSelectedId() {
+    return safeStorage.get(STORAGE_KEYS.LAST_BAR, "straight");
+  },
+
+  setLastSelectedId(id) {
+    safeStorage.set(STORAGE_KEYS.LAST_BAR, id);
   }
-  if (isNaN(numWeight) || numWeight <= 0) {
-    throw new Error("Please enter a valid starting weight greater than 0.");
-  }
-  const id = "custom_" + Date.now();
-  const newBar = {
-    id,
-    name: trimmedName,
-    shortName: trimmedName,
-    label: `${trimmedName} — ${numWeight} lb`,
-    weight: numWeight,
-    isCustom: true
-  };
-  const list = getCustomBars();
-  list.push(newBar);
-  saveCustomBars(list);
-  return newBar;
-}
+};
 
-function deleteCustomBar(id) {
-  const list = getCustomBars();
-  const updated = list.filter(b => b.id !== id);
-  saveCustomBars(updated);
-  return updated;
-}
+// Aliases for backward compatibility with existing tests
+function getCustomBars() { return EquipmentStore.getCustom(); }
+function saveCustomBars(bars) { return EquipmentStore.saveCustom(bars); }
+function getAllBars() { return EquipmentStore.getAll(); }
+function addCustomBar(data) { return EquipmentStore.add(data); }
+function deleteCustomBar(id) { return EquipmentStore.delete(id); }
 
 // Available plate configurations
 const plates = [
@@ -293,6 +348,9 @@ function calculatePlateLoad(barWeight, targetWeight) {
 // Export for Node testing if in commonjs environment
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
+    EquipmentStore,
+    safeStorage,
+    STORAGE_KEYS,
     DEFAULT_BARS,
     bars,
     plates,
@@ -341,15 +399,27 @@ function initApp() {
   const newEquipWeightInput = document.getElementById("new-equip-weight");
   const modalErrorMsg = document.getElementById("modal-error-msg");
 
-  let allBars = getAllBars();
-  let currentBarId = localStorage.getItem("platecalc_last_bar") || "straight";
-  if (!allBars.some(b => b.id === currentBarId)) {
+  // Cached output and breakdown DOM elements
+  const errorMessageEl = document.getElementById("error-message");
+  const errorClosestEl = document.getElementById("error-closest");
+  const resBarNameEl = document.getElementById("res-bar-name");
+  const resSideWeightEl = document.getElementById("res-side-weight");
+  const barbellLeftContainer = document.getElementById("barbell-plates-left");
+  const barbellRightContainer = document.getElementById("barbell-plates-right");
+  const barbellEl = document.getElementById("barbell-visual");
+  const breakdownList = document.getElementById("breakdown-list");
+  const breakdownTotalPlates = document.getElementById("breakdown-total-plates");
+  const loadedPerSideEl = document.getElementById("summary-loaded-per-side");
+  const barWeightEl = document.getElementById("summary-bar-weight");
+  const totalWeightEl = document.getElementById("summary-total-weight");
+
+  let currentBarId = EquipmentStore.getLastSelectedId();
+  if (!EquipmentStore.getById(currentBarId)) {
     currentBarId = "straight";
   }
 
   function getSelectedBar() {
-    allBars = getAllBars();
-    return allBars.find(b => b.id === currentBarId) || DEFAULT_BARS[0];
+    return EquipmentStore.getById(currentBarId) || EquipmentStore.getBuiltIn()[0];
   }
 
   function updateTriggerDisplay(bar) {
@@ -358,7 +428,7 @@ function initApp() {
   }
 
   function renderDropdown() {
-    allBars = getAllBars();
+    const allBars = EquipmentStore.getAll();
     const selectedBar = getSelectedBar();
     updateTriggerDisplay(selectedBar);
 
@@ -378,8 +448,9 @@ function initApp() {
           <svg class="option-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
-          <span class="option-name">${bar.name}</span>
+          <span class="option-name"></span>
         `;
+        leftDiv.querySelector(".option-name").textContent = bar.name;
 
         const rightDiv = document.createElement("div");
         rightDiv.className = "option-right";
@@ -411,7 +482,7 @@ function initApp() {
           delBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             if (confirm(`Remove "${bar.name}" from your equipment?`)) {
-              deleteCustomBar(bar.id);
+              EquipmentStore.delete(bar.id);
               if (currentBarId === bar.id) {
                 selectBar("straight");
               } else {
@@ -456,12 +527,11 @@ function initApp() {
   }
 
   function selectBar(barId) {
-    allBars = getAllBars();
-    if (!allBars.some(b => b.id === barId)) {
+    if (!EquipmentStore.getById(barId)) {
       barId = "straight";
     }
     currentBarId = barId;
-    localStorage.setItem("platecalc_last_bar", barId);
+    EquipmentStore.setLastSelectedId(barId);
     renderDropdown();
     calculate();
   }
@@ -566,7 +636,7 @@ function initApp() {
       const weight = newEquipWeightInput ? newEquipWeightInput.value.trim() : "";
 
       try {
-        const newBar = addCustomBar({ name, weight });
+        const newBar = EquipmentStore.add({ name, weight });
         closeModal();
         selectBar(newBar.id);
         targetInput.focus();
@@ -674,15 +744,8 @@ function initApp() {
     errorContainer.classList.add("hidden");
     resultsContainer.classList.remove("hidden");
 
-    // Update headline text
-    const targetEl = document.getElementById("res-target-weight");
-    if (targetEl) targetEl.textContent = result.targetWeight;
-
-    const barNameEl = document.getElementById("res-bar-name");
-    if (barNameEl) barNameEl.textContent = `${selectedBar.shortName} (${selectedBar.weight} lb)`;
-
-    const sideWeightEl = document.getElementById("res-side-weight");
-    if (sideWeightEl) sideWeightEl.textContent = `${result.weightPerSide} lb per side`;
+    if (resBarNameEl) resBarNameEl.textContent = `${selectedBar.shortName} (${selectedBar.weight} lb)`;
+    if (resSideWeightEl) resSideWeightEl.textContent = `${result.weightPerSide} lb per side`;
 
     // Render barbell visualization
     renderBarbell(result.platesPerSide);
@@ -692,33 +755,33 @@ function initApp() {
   }
 
   function renderError(result) {
-    const messageEl = document.getElementById("error-message");
-    const closestEl = document.getElementById("error-closest");
-    messageEl.textContent = result.message;
+    if (errorMessageEl) errorMessageEl.textContent = result.message;
 
-    closestEl.innerHTML = "";
-    if (result.closestWeights && result.closestWeights.length > 0) {
-      const heading = document.createElement("p");
-      heading.className = "closest-heading";
-      heading.textContent = "Closest available weights:";
-      closestEl.appendChild(heading);
+    if (errorClosestEl) {
+      errorClosestEl.innerHTML = "";
+      if (result.closestWeights && result.closestWeights.length > 0) {
+        const heading = document.createElement("p");
+        heading.className = "closest-heading";
+        heading.textContent = "Closest available weights:";
+        errorClosestEl.appendChild(heading);
 
-      const btnGroup = document.createElement("div");
-      btnGroup.className = "closest-buttons";
+        const btnGroup = document.createElement("div");
+        btnGroup.className = "closest-buttons";
 
-      result.closestWeights.forEach(weight => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "closest-btn";
-        btn.textContent = `Load ${weight} lb`;
-        btn.addEventListener("click", () => {
-          targetInput.value = weight;
-          calculate();
+        result.closestWeights.forEach(weight => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "closest-btn";
+          btn.textContent = `Load ${weight} lb`;
+          btn.addEventListener("click", () => {
+            targetInput.value = weight;
+            calculate();
+          });
+          btnGroup.appendChild(btn);
         });
-        btnGroup.appendChild(btn);
-      });
 
-      closestEl.appendChild(btnGroup);
+        errorClosestEl.appendChild(btnGroup);
+      }
     }
   }
 
@@ -739,12 +802,10 @@ function initApp() {
   }
 
   function renderBarbell(platesPerSide) {
-    const leftContainer = document.getElementById("barbell-plates-left");
-    const rightContainer = document.getElementById("barbell-plates-right");
-    const barbellEl = document.getElementById("barbell-visual");
+    if (!barbellLeftContainer || !barbellRightContainer || !barbellEl) return;
 
-    leftContainer.innerHTML = "";
-    rightContainer.innerHTML = "";
+    barbellLeftContainer.innerHTML = "";
+    barbellRightContainer.innerHTML = "";
 
     // Adjust scale factor if many plates to avoid horizontal overflow on 320px screens
     const plateCount = platesPerSide.length;
@@ -763,59 +824,52 @@ function initApp() {
 
     // Right side: largest -> smallest moving away from center (BAR | 45 | 10 | 5 | 2.5)
     platesPerSide.forEach(weight => {
-      rightContainer.appendChild(createPlateElement(weight));
+      barbellRightContainer.appendChild(createPlateElement(weight));
     });
 
     // Left side: mirrored (2.5 | 5 | 10 | 45 | BAR)
     const reversed = [...platesPerSide].reverse();
     reversed.forEach(weight => {
-      leftContainer.appendChild(createPlateElement(weight));
+      barbellLeftContainer.appendChild(createPlateElement(weight));
     });
   }
 
   function renderBreakdown(result) {
-    const breakdownList = document.getElementById("breakdown-list");
-    const breakdownTotalPlates = document.getElementById("breakdown-total-plates");
+    if (breakdownList) {
+      breakdownList.innerHTML = "";
 
-    breakdownList.innerHTML = "";
+      if (result.platesPerSide.length === 0) {
+        const emptyNotice = document.createElement("li");
+        emptyNotice.className = "breakdown-empty-text";
+        emptyNotice.textContent = "Bar only (0 plates)";
+        breakdownList.appendChild(emptyNotice);
+      } else {
+        result.breakdown.forEach(item => {
+          const li = document.createElement("li");
+          li.className = "breakdown-badge";
 
-    if (result.platesPerSide.length === 0) {
-      const emptyNotice = document.createElement("li");
-      emptyNotice.className = "breakdown-empty-text";
-      emptyNotice.textContent = "Bar only (0 plates)";
-      breakdownList.appendChild(emptyNotice);
-    } else {
-      result.breakdown.forEach(item => {
-        const li = document.createElement("li");
-        li.className = "breakdown-badge";
+          const dot = document.createElement("span");
+          dot.className = `plate-dot plate-dot-${item.plateDef.color}`;
 
-        const dot = document.createElement("span");
-        dot.className = `plate-dot plate-dot-${item.plateDef.color}`;
+          const text = document.createElement("span");
+          text.innerHTML = `<strong>${item.weight}</strong>&times;${item.count}`;
 
-        const text = document.createElement("span");
-        text.innerHTML = `<strong>${item.weight}</strong>&times;${item.count}`;
-
-        li.appendChild(dot);
-        li.appendChild(text);
-        breakdownList.appendChild(li);
-      });
+          li.appendChild(dot);
+          li.appendChild(text);
+          breakdownList.appendChild(li);
+        });
+      }
     }
 
     if (breakdownTotalPlates) {
       breakdownTotalPlates.textContent = `${result.totalPlatesCount}`;
     }
-
-    const loadedPerSideEl = document.getElementById("summary-loaded-per-side");
     if (loadedPerSideEl) {
       loadedPerSideEl.textContent = `${result.weightPerSide} lb`;
     }
-
-    const barWeightEl = document.getElementById("summary-bar-weight");
     if (barWeightEl) {
       barWeightEl.textContent = `${result.barWeight} lb`;
     }
-
-    const totalWeightEl = document.getElementById("summary-total-weight");
     if (totalWeightEl) {
       totalWeightEl.textContent = `${result.targetWeight} lb`;
     }
