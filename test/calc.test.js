@@ -86,7 +86,8 @@ res = calculatePlateLoad(45, 40);
 assert.strictEqual(res.valid, false);
 assert.strictEqual(res.reason, "TARGET_BELOW_BAR");
 assert.strictEqual(res.message, "Target weight must be at least 45 lb for this bar.");
-console.log("✓ Invalid: Straight Bar / 40 => below bar error");
+assert.deepStrictEqual(res.closestWeights, [45]);
+console.log("✓ Invalid: Straight Bar / 40 => below bar error (closest [45])");
 
 // Test 10: Invalid Straight Bar / 47
 res = calculatePlateLoad(45, 47);
@@ -126,7 +127,8 @@ res = calculatePlateLoad(105, 100);
 assert.strictEqual(res.valid, false);
 assert.strictEqual(res.reason, "TARGET_BELOW_BAR");
 assert.strictEqual(res.message, "Target weight must be at least 105 lb for this bar.");
-console.log("✓ Invalid: Hack Squat (105 lb) / 100 => below starting weight error");
+assert.deepStrictEqual(res.closestWeights, [105]);
+console.log("✓ Invalid: Hack Squat (105 lb) / 100 => below starting weight error (closest [105])");
 
 // Test 15: Hack Squat machine (105 lb starting weight) / 197 lb (not loadable)
 res = calculatePlateLoad(105, 197);
@@ -236,7 +238,7 @@ assert.strictEqual(res.totalPlatesCount, 48);
 console.log("✓ 2,000 lb load calculates correctly (977.5 lb per side, 48 plates total)");
 
 console.log("\n--- Running EquipmentStore Deep Module & Storage Resilience Tests ---");
-const { EquipmentStore, BarbellVisualizer, safeStorage } = require("../public/js/app.js");
+const { EquipmentStore, BarbellVisualizer, BreakdownView, safeStorage } = require("../public/js/app.js");
 
 // Built-in checks
 assert.strictEqual(EquipmentStore.getBuiltIn().length, 4);
@@ -254,6 +256,18 @@ assert.throws(
   /Starting weight cannot exceed 2,000 lb/
 );
 console.log("✓ EquipmentStore enforces upper bounds on name length and starting weight");
+
+// ID entropy test: multiple rapid additions have distinct IDs
+const itemA = EquipmentStore.add({ name: "Machine A", weight: 80 });
+const itemB = EquipmentStore.add({ name: "Machine B", weight: 90 });
+const itemC = EquipmentStore.add({ name: "Machine C", weight: 100 });
+assert.notStrictEqual(itemA.id, itemB.id);
+assert.notStrictEqual(itemB.id, itemC.id);
+assert.ok(itemA.id.startsWith("custom_"));
+EquipmentStore.delete(itemA.id);
+EquipmentStore.delete(itemB.id);
+EquipmentStore.delete(itemC.id);
+console.log("✓ EquipmentStore generates unique entropy IDs without collisions");
 
 // Deletion boundary checks
 const builtInCountBefore = EquipmentStore.getAll().length;
@@ -322,5 +336,22 @@ assert.strictEqual(typeof BarbellVisualizer.render, "function");
 assert.strictEqual(typeof BarbellVisualizer.clear, "function");
 assert.strictEqual(BarbellVisualizer.createPlateElement(45), null); // in node without document
 console.log("✓ BarbellVisualizer deep module interface verified");
+
+console.log("\n--- Running BreakdownView Module Tests ---");
+assert.strictEqual(typeof BreakdownView.createBadgeElement, "function");
+assert.strictEqual(typeof BreakdownView.render, "function");
+assert.strictEqual(typeof BreakdownView.clear, "function");
+assert.strictEqual(BreakdownView.createBadgeElement({ weight: 45, count: 1 }), null); // in node without document
+console.log("✓ BreakdownView deep module interface verified");
+
+console.log("\n--- Running String & Decimal Input Parsing Tests ---");
+res = calculatePlateLoad(45, parseFloat("00135"));
+assert.strictEqual(res.valid, true);
+assert.strictEqual(res.weightPerSide, 45);
+
+res = calculatePlateLoad(45, parseFloat("  225.0  "));
+assert.strictEqual(res.valid, true);
+assert.strictEqual(res.weightPerSide, 90);
+console.log("✓ String number parsing safely handles leading zeros and whitespace");
 
 console.log("\nALL TESTS PASSED SUCCESSFULLY!");
