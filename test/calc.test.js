@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { bars, plates, calculatePlateLoad } = require("../public/js/app.js");
+const { bars, plates, calculatePlateLoad, calculateAdjustedWeight, getPlateDef } = require("../public/js/app.js");
 
 console.log("--- Checking Bars Configuration ---");
 assert.strictEqual(bars.length, 4);
@@ -638,5 +638,40 @@ assert.strictEqual(res.valid, false);
 assert.strictEqual(res.reason, "TARGET_BELOW_BAR");
 assert.deepStrictEqual(res.closestWeights, [45]);
 console.log("✓ Non-finite and zero target weights safely handled");
+
+console.log("\n--- Running Stepper calculateAdjustedWeight Module Tests ---");
+// Empty inputs
+assert.strictEqual(calculateAdjustedWeight("", 45, 5), 50);
+assert.strictEqual(calculateAdjustedWeight("", 45, 25), 70);
+assert.strictEqual(calculateAdjustedWeight("", 45, -5), 45); // Stays at bar weight rather than dipping to 40
+assert.strictEqual(calculateAdjustedWeight(null, 45, -25), 45);
+assert.strictEqual(calculateAdjustedWeight(undefined, 55, -5), 55);
+
+// Standard increments
+assert.strictEqual(calculateAdjustedWeight("135", 45, 5), 140);
+assert.strictEqual(calculateAdjustedWeight("135", 45, -5), 130);
+assert.strictEqual(calculateAdjustedWeight(135, 45, 25), 160);
+assert.strictEqual(calculateAdjustedWeight(135, 45, -25), 110);
+
+// Bounds clamping
+assert.strictEqual(calculateAdjustedWeight("0", 45, -5), 0);
+assert.strictEqual(calculateAdjustedWeight("2000", 45, 5), 2000);
+assert.strictEqual(calculateAdjustedWeight("1990", 45, 25), 2000);
+
+// Floating point precision sanitization (e.g. 90.35 + 5 => 95.35)
+assert.strictEqual(calculateAdjustedWeight("90.35", 45, 5), 95.35);
+assert.strictEqual(calculateAdjustedWeight("53.35", 45, -5), 48.35);
+
+// Invalid input fallback
+assert.strictEqual(calculateAdjustedWeight("invalid", 45, 5), 45);
+console.log("✓ calculateAdjustedWeight bounds, empty states, and float precision verified");
+
+console.log("\n--- Running getPlateDef Fallback Styling Tests ---");
+const fallbackPlate = getPlateDef(12.5);
+assert.strictEqual(fallbackPlate.weight, 12.5);
+assert.strictEqual(fallbackPlate.color, "gray");
+assert.strictEqual(fallbackPlate.size, "medium");
+assert.strictEqual(fallbackPlate.thickness, "medium");
+console.log("✓ getPlateDef provides structured gray fallback definitions for non-standard weights");
 
 console.log("\nALL TESTS PASSED SUCCESSFULLY!");

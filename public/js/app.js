@@ -425,6 +425,33 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
 }
 
 /**
+ * Pure calculator for stepper adjustments.
+ * Safely increments/decrements weight, clamps to bounds [0, maxWeight],
+ * eliminates floating-point accumulation noise, and sets empty inputs to bar weight on decrement.
+ *
+ * @param {string|number} currentValue Current raw input value
+ * @param {number} barWeight Weight of currently selected bar/equipment
+ * @param {number} delta Amount to adjust (+5, -5, +25, -25)
+ * @param {number} [maxWeight=MAX_TARGET_WEIGHT] Maximum allowed weight
+ * @returns {number} Sanitized next target weight
+ */
+function calculateAdjustedWeight(currentValue, barWeight, delta, maxWeight = MAX_TARGET_WEIGHT) {
+  const isBlank = currentValue === "" || currentValue === null || currentValue === undefined;
+  const current = isBlank ? barWeight : parseFloat(currentValue);
+  let next;
+  if (isNaN(current)) {
+    next = barWeight;
+  } else if (isBlank && delta < 0) {
+    next = barWeight;
+  } else {
+    next = current + delta;
+  }
+  if (next < 0) next = 0;
+  if (next > maxWeight) next = maxWeight;
+  return Math.round(next * 100) / 100;
+}
+
+/**
  * BarbellVisualizer: Deep module responsible for DOM sleeve visualization.
  * Encapsulates plate element construction, compact scaling, empty states, and sleeve mirroring.
  */
@@ -967,6 +994,10 @@ const EquipmentDropdown = {
               } else {
                 this.render();
               }
+              const { trigger } = this._elements || {};
+              if (trigger && typeof trigger.focus === "function") {
+                trigger.focus();
+              }
             }
           });
           delBtn.addEventListener("keydown", (e) => {
@@ -1166,6 +1197,7 @@ if (typeof module !== "undefined" && module.exports) {
     getPlateDef,
     getPlateBreakdown,
     calculatePlateLoad,
+    calculateAdjustedWeight,
     SCALE,
     getCustomBars,
     saveCustomBars,
@@ -1298,12 +1330,8 @@ function initApp() {
   // Stepper Adjusters (5 lb default, or 25 lb with Shift key / Shift+Click)
   function adjustWeight(delta) {
     if (!targetInput) return;
-    const raw = targetInput.value.trim();
     const selectedBar = EquipmentDropdown.getSelectedBar();
-    const current = raw === "" ? selectedBar.weight : parseFloat(raw);
-    let next = isNaN(current) ? selectedBar.weight : current + delta;
-    if (next < 0) next = 0;
-    if (next > MAX_TARGET_WEIGHT) next = MAX_TARGET_WEIGHT;
+    const next = calculateAdjustedWeight(targetInput.value.trim(), selectedBar.weight, delta);
     targetInput.value = next;
     calculate();
     // Only maintain focus if already focused, avoiding mobile virtual keyboard popup
