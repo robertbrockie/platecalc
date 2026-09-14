@@ -279,7 +279,7 @@ function getInventoryStepUnits(availablePlates) {
  * @returns {object} Result object with valid flag and either data or error reason
  */
 function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
-  if (typeof barWeight !== "number" || isNaN(barWeight) || barWeight < 0) {
+  if (typeof barWeight !== "number" || !Number.isFinite(barWeight) || barWeight < 0 || barWeight > MAX_TARGET_WEIGHT) {
     return {
       valid: false,
       reason: "INVALID_BAR_WEIGHT",
@@ -287,7 +287,7 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
     };
   }
 
-  if (typeof targetWeight !== "number" || isNaN(targetWeight)) {
+  if (typeof targetWeight !== "number" || !Number.isFinite(targetWeight)) {
     return {
       valid: false,
       reason: "INVALID_INPUT",
@@ -569,6 +569,160 @@ const ErrorView = {
   clear({ messageEl, closestEl }) {
     if (messageEl) messageEl.textContent = "";
     if (closestEl) closestEl.innerHTML = "";
+  }
+};
+
+/**
+ * CalculatorView: Deep module managing the presentation state machine (empty, error, result).
+ * Coordinates mutual exclusivity of container cards and delegates component rendering
+ * to BarbellVisualizer, BreakdownView, and ErrorView.
+ */
+const CalculatorView = {
+  _elements: null,
+  _state: "empty",
+
+  init(elements) {
+    this._elements = elements;
+    return this;
+  },
+
+  getState() {
+    return this._state;
+  },
+
+  showEmpty() {
+    this._state = "empty";
+    if (!this._elements) return;
+    const {
+      emptyState,
+      errorContainer,
+      resultsContainer,
+      barbellLeft,
+      barbellRight,
+      barbellStage,
+      breakdownList,
+      breakdownTotal,
+      loadedPerSide,
+      barWeightEl,
+      totalWeightEl,
+      errorMessageEl,
+      errorClosestEl
+    } = this._elements;
+
+    if (emptyState && emptyState.classList) emptyState.classList.remove("hidden");
+    if (errorContainer && errorContainer.classList) errorContainer.classList.add("hidden");
+    if (resultsContainer && resultsContainer.classList) resultsContainer.classList.add("hidden");
+
+    BarbellVisualizer.clear({
+      leftContainer: barbellLeft,
+      rightContainer: barbellRight,
+      stageElement: barbellStage
+    });
+
+    BreakdownView.clear({
+      listEl: breakdownList,
+      totalPlatesEl: breakdownTotal,
+      loadedPerSideEl: loadedPerSide,
+      barWeightEl,
+      totalWeightEl
+    });
+
+    ErrorView.clear({
+      messageEl: errorMessageEl,
+      closestEl: errorClosestEl
+    });
+  },
+
+  showError(result, onSelectWeight) {
+    this._state = "error";
+    if (!this._elements) return;
+    const {
+      emptyState,
+      errorContainer,
+      resultsContainer,
+      barbellLeft,
+      barbellRight,
+      barbellStage,
+      breakdownList,
+      breakdownTotal,
+      loadedPerSide,
+      barWeightEl,
+      totalWeightEl,
+      errorMessageEl,
+      errorClosestEl
+    } = this._elements;
+
+    if (emptyState && emptyState.classList) emptyState.classList.add("hidden");
+    if (resultsContainer && resultsContainer.classList) resultsContainer.classList.add("hidden");
+    if (errorContainer && errorContainer.classList) errorContainer.classList.remove("hidden");
+
+    BarbellVisualizer.clear({
+      leftContainer: barbellLeft,
+      rightContainer: barbellRight,
+      stageElement: barbellStage
+    });
+
+    BreakdownView.clear({
+      listEl: breakdownList,
+      totalPlatesEl: breakdownTotal,
+      loadedPerSideEl: loadedPerSide,
+      barWeightEl,
+      totalWeightEl
+    });
+
+    ErrorView.render(
+      { messageEl: errorMessageEl, closestEl: errorClosestEl },
+      result,
+      onSelectWeight
+    );
+  },
+
+  showResult(result, selectedBar) {
+    this._state = "result";
+    if (!this._elements) return;
+    const {
+      emptyState,
+      errorContainer,
+      resultsContainer,
+      barNameEl,
+      sideWeightEl,
+      barbellLeft,
+      barbellRight,
+      barbellStage,
+      breakdownList,
+      breakdownTotal,
+      loadedPerSide,
+      barWeightEl,
+      totalWeightEl,
+      errorMessageEl,
+      errorClosestEl
+    } = this._elements;
+
+    if (emptyState && emptyState.classList) emptyState.classList.add("hidden");
+    if (errorContainer && errorContainer.classList) errorContainer.classList.add("hidden");
+    if (resultsContainer && resultsContainer.classList) resultsContainer.classList.remove("hidden");
+
+    if (barNameEl) barNameEl.textContent = `${(selectedBar && selectedBar.shortName) || (selectedBar && selectedBar.name) || "Bar"} (${(selectedBar && selectedBar.weight) || 45} lb)`;
+    if (sideWeightEl) sideWeightEl.textContent = `${result.weightPerSide} lb per side`;
+
+    BarbellVisualizer.render({
+      leftContainer: barbellLeft,
+      rightContainer: barbellRight,
+      stageElement: barbellStage
+    }, result.platesPerSide);
+
+    BreakdownView.render({
+      listEl: breakdownList,
+      totalPlatesEl: breakdownTotal,
+      loadedPerSideEl: loadedPerSide,
+      barWeightEl,
+      totalWeightEl
+    }, result);
+
+    ErrorView.clear({
+      messageEl: errorMessageEl,
+      closestEl: errorClosestEl
+    });
   }
 };
 
@@ -947,6 +1101,7 @@ if (typeof module !== "undefined" && module.exports) {
     EquipmentStore,
     EquipmentDropdown,
     EquipmentModal,
+    CalculatorView,
     BarbellVisualizer,
     BreakdownView,
     ErrorView,
@@ -989,20 +1144,11 @@ function initApp() {
   const stepDownBtn = document.getElementById("step-down-btn");
   const clearBtn = document.getElementById("clear-btn");
   const calcForm = document.getElementById("calc-form");
-  const resultsContainer = document.getElementById("results-container");
+
+  // Presentation containers & elements
   const emptyState = document.getElementById("empty-state");
   const errorContainer = document.getElementById("error-container");
-
-  // Modal elements
-  const addModal = document.getElementById("add-equipment-modal");
-  const addForm = document.getElementById("add-equipment-form");
-  const modalCloseBtn = document.getElementById("modal-close-btn");
-  const modalCancelBtn = document.getElementById("modal-cancel-btn");
-  const newEquipNameInput = document.getElementById("new-equip-name");
-  const newEquipWeightInput = document.getElementById("new-equip-weight");
-  const modalErrorMsg = document.getElementById("modal-error-msg");
-
-  // Cached output and breakdown DOM elements
+  const resultsContainer = document.getElementById("results-container");
   const errorMessageEl = document.getElementById("error-message");
   const errorClosestEl = document.getElementById("error-closest");
   const resBarNameEl = document.getElementById("res-bar-name");
@@ -1015,6 +1161,34 @@ function initApp() {
   const loadedPerSideEl = document.getElementById("summary-loaded-per-side");
   const barWeightEl = document.getElementById("summary-bar-weight");
   const totalWeightEl = document.getElementById("summary-total-weight");
+
+  // Modal elements
+  const addModal = document.getElementById("add-equipment-modal");
+  const addForm = document.getElementById("add-equipment-form");
+  const modalCloseBtn = document.getElementById("modal-close-btn");
+  const modalCancelBtn = document.getElementById("modal-cancel-btn");
+  const newEquipNameInput = document.getElementById("new-equip-name");
+  const newEquipWeightInput = document.getElementById("new-equip-weight");
+  const modalErrorMsg = document.getElementById("modal-error-msg");
+
+  // Initialize Presentation State Machine
+  CalculatorView.init({
+    emptyState,
+    errorContainer,
+    resultsContainer,
+    barNameEl: resBarNameEl,
+    sideWeightEl: resSideWeightEl,
+    barbellStage: barbellEl,
+    barbellLeft: barbellLeftContainer,
+    barbellRight: barbellRightContainer,
+    breakdownList,
+    breakdownTotal: breakdownTotalPlates,
+    loadedPerSide: loadedPerSideEl,
+    barWeightEl,
+    totalWeightEl,
+    errorMessageEl,
+    errorClosestEl
+  });
 
   // Initialize Equipment Dropdown module
   EquipmentDropdown.init({
@@ -1069,7 +1243,7 @@ function initApp() {
     }
   });
 
-  // Stepper Adjusters
+  // Stepper Adjusters (5 lb default, or 25 lb with Shift key / Shift+Click)
   function adjustWeight(delta) {
     if (!targetInput) return;
     const raw = targetInput.value.trim();
@@ -1087,10 +1261,10 @@ function initApp() {
   }
 
   if (stepUpBtn) {
-    stepUpBtn.addEventListener("click", () => adjustWeight(5));
+    stepUpBtn.addEventListener("click", (e) => adjustWeight(e.shiftKey ? 25 : 5));
   }
   if (stepDownBtn) {
-    stepDownBtn.addEventListener("click", () => adjustWeight(-5));
+    stepDownBtn.addEventListener("click", (e) => adjustWeight(e.shiftKey ? -25 : -5));
   }
 
   // Prevent double-tap zoom on iOS Safari when tapping buttons rapidly
@@ -1144,7 +1318,7 @@ function initApp() {
 
     // Default/blank state
     if (rawVal === "") {
-      showEmptyState();
+      CalculatorView.showEmpty();
       return;
     }
 
@@ -1152,91 +1326,15 @@ function initApp() {
     const result = calculatePlateLoad(selectedBar.weight, targetWeight);
 
     if (!result.valid) {
-      showErrorState(result);
-    } else {
-      showResultState(result, selectedBar);
-    }
-  }
-
-  function showEmptyState() {
-    if (emptyState) emptyState.classList.remove("hidden");
-    if (errorContainer) errorContainer.classList.add("hidden");
-    if (resultsContainer) resultsContainer.classList.add("hidden");
-    BarbellVisualizer.clear({
-      leftContainer: barbellLeftContainer,
-      rightContainer: barbellRightContainer,
-      stageElement: barbellEl
-    });
-    BreakdownView.clear({
-      listEl: breakdownList,
-      totalPlatesEl: breakdownTotalPlates,
-      loadedPerSideEl,
-      barWeightEl,
-      totalWeightEl
-    });
-    ErrorView.clear({
-      messageEl: errorMessageEl,
-      closestEl: errorClosestEl
-    });
-  }
-
-  function showErrorState(result) {
-    if (emptyState) emptyState.classList.add("hidden");
-    if (resultsContainer) resultsContainer.classList.add("hidden");
-    if (errorContainer) errorContainer.classList.remove("hidden");
-    BarbellVisualizer.clear({
-      leftContainer: barbellLeftContainer,
-      rightContainer: barbellRightContainer,
-      stageElement: barbellEl
-    });
-    BreakdownView.clear({
-      listEl: breakdownList,
-      totalPlatesEl: breakdownTotalPlates,
-      loadedPerSideEl,
-      barWeightEl,
-      totalWeightEl
-    });
-
-    ErrorView.render(
-      { messageEl: errorMessageEl, closestEl: errorClosestEl },
-      result,
-      (weight) => {
+      CalculatorView.showError(result, (weight) => {
         if (targetInput) {
           targetInput.value = weight;
         }
         calculate();
-      }
-    );
-  }
-
-  function showResultState(result, selectedBar) {
-    if (emptyState) emptyState.classList.add("hidden");
-    if (errorContainer) errorContainer.classList.add("hidden");
-    if (resultsContainer) resultsContainer.classList.remove("hidden");
-
-    if (resBarNameEl) resBarNameEl.textContent = `${selectedBar.shortName} (${selectedBar.weight} lb)`;
-    if (resSideWeightEl) resSideWeightEl.textContent = `${result.weightPerSide} lb per side`;
-
-    // Render barbell visualization via BarbellVisualizer deep module
-    BarbellVisualizer.render({
-      leftContainer: barbellLeftContainer,
-      rightContainer: barbellRightContainer,
-      stageElement: barbellEl
-    }, result.platesPerSide);
-
-    // Render plate breakdown text via BreakdownView deep module
-    BreakdownView.render({
-      listEl: breakdownList,
-      totalPlatesEl: breakdownTotalPlates,
-      loadedPerSideEl,
-      barWeightEl,
-      totalWeightEl
-    }, result);
-
-    ErrorView.clear({
-      messageEl: errorMessageEl,
-      closestEl: errorClosestEl
-    });
+      });
+    } else {
+      CalculatorView.showResult(result, selectedBar);
+    }
   }
 
   // Initial calculation check

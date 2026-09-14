@@ -449,13 +449,86 @@ EquipmentModal.close();
 assert.strictEqual(EquipmentModal.isOpen(), false);
 console.log("✓ EquipmentModal deep module interface and visibility toggles verified");
 
-console.log("\n--- Running Defensive barWeight Invariant Tests ---");
-[NaN, -45, -1, "straight", null, undefined, {}].forEach(badBar => {
+console.log("\n--- Running CalculatorView Deep Module Tests ---");
+const { CalculatorView } = require("../public/js/app.js");
+assert.strictEqual(typeof CalculatorView.init, "function");
+assert.strictEqual(typeof CalculatorView.getState, "function");
+assert.strictEqual(typeof CalculatorView.showEmpty, "function");
+assert.strictEqual(typeof CalculatorView.showError, "function");
+assert.strictEqual(typeof CalculatorView.showResult, "function");
+
+function createMockClassList(initialClasses = []) {
+  const _classes = new Set(initialClasses);
+  return {
+    _classes,
+    add(c) { _classes.add(c); },
+    remove(c) { _classes.delete(c); },
+    contains(c) { return _classes.has(c); }
+  };
+}
+
+const mockEmptyState = { classList: createMockClassList() };
+const mockErrorContainer = { classList: createMockClassList(["hidden"]) };
+const mockResultsContainer = { classList: createMockClassList(["hidden"]) };
+const mockBarName = { textContent: "" };
+const mockSideWeight = { textContent: "" };
+
+CalculatorView.init({
+  emptyState: mockEmptyState,
+  errorContainer: mockErrorContainer,
+  resultsContainer: mockResultsContainer,
+  barNameEl: mockBarName,
+  sideWeightEl: mockSideWeight
+});
+
+assert.strictEqual(CalculatorView.getState(), "empty");
+
+// Transition to Error state
+CalculatorView.showError({ message: "Test error", closestWeights: [135] });
+assert.strictEqual(CalculatorView.getState(), "error");
+assert.strictEqual(mockErrorContainer.classList.contains("hidden"), false);
+assert.strictEqual(mockEmptyState.classList.contains("hidden"), true);
+assert.strictEqual(mockResultsContainer.classList.contains("hidden"), true);
+
+// Transition to Result state
+CalculatorView.showResult({ weightPerSide: 45, platesPerSide: [45] }, { name: "Straight Bar", weight: 45 });
+assert.strictEqual(CalculatorView.getState(), "result");
+assert.strictEqual(mockResultsContainer.classList.contains("hidden"), false);
+assert.strictEqual(mockEmptyState.classList.contains("hidden"), true);
+assert.strictEqual(mockErrorContainer.classList.contains("hidden"), true);
+assert.strictEqual(mockBarName.textContent, "Straight Bar (45 lb)");
+assert.strictEqual(mockSideWeight.textContent, "45 lb per side");
+
+// Transition back to Empty state
+CalculatorView.showEmpty();
+assert.strictEqual(CalculatorView.getState(), "empty");
+assert.strictEqual(mockEmptyState.classList.contains("hidden"), false);
+assert.strictEqual(mockErrorContainer.classList.contains("hidden"), true);
+assert.strictEqual(mockResultsContainer.classList.contains("hidden"), true);
+console.log("✓ CalculatorView deep module state transitions and mutual exclusivity verified");
+
+console.log("\n--- Running Defensive barWeight & targetWeight Invariant Tests ---");
+[NaN, -45, -1, "straight", null, undefined, {}, Infinity, -Infinity, 2001, 5000].forEach(badBar => {
   const r = calculatePlateLoad(badBar, 135);
   assert.strictEqual(r.valid, false);
   assert.strictEqual(r.reason, "INVALID_BAR_WEIGHT");
   assert.strictEqual(r.message, "Please select a valid equipment starting weight.");
 });
-console.log("✓ All non-numeric or negative bar weights safely return INVALID_BAR_WEIGHT");
+console.log("✓ All non-numeric, negative, non-finite, and excessive bar weights (>2000 lb) safely return INVALID_BAR_WEIGHT");
+
+// Non-finite and extreme target weights
+res = calculatePlateLoad(45, -Infinity);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "INVALID_INPUT");
+
+res = calculatePlateLoad(45, Infinity);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "INVALID_INPUT");
+
+res = calculatePlateLoad(45, 0);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_BELOW_BAR");
+assert.deepStrictEqual(res.closestWeights, [45]);
+console.log("✓ Non-finite and zero target weights safely handled");
 
 console.log("\nALL TESTS PASSED SUCCESSFULLY!");
