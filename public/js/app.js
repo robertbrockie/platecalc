@@ -111,8 +111,14 @@ const EquipmentStore = {
     if (!trimmedName) {
       throw new Error("Please enter an equipment name.");
     }
+    if (trimmedName.length > 40) {
+      throw new Error("Equipment name cannot exceed 40 characters.");
+    }
     if (isNaN(numWeight) || numWeight <= 0) {
       throw new Error("Please enter a valid starting weight greater than 0.");
+    }
+    if (numWeight > 2000) {
+      throw new Error("Starting weight cannot exceed 2,000 lb.");
     }
     const id = "custom_" + Date.now();
     const newBar = {
@@ -130,6 +136,9 @@ const EquipmentStore = {
   },
 
   delete(id) {
+    if (DEFAULT_BARS.some(b => b.id === id)) {
+      return this.getCustom();
+    }
     const list = this.getCustom();
     const updated = list.filter(b => b.id !== id);
     this.saveCustom(updated);
@@ -201,22 +210,30 @@ const plates = [
 /**
  * Returns plate definition for a given weight
  * @param {number} weight
+ * @param {Array} [availablePlates=plates]
  * @returns {object|undefined}
  */
-function getPlateDef(weight) {
-  return plates.find(p => p.weight === weight);
+function getPlateDef(weight, availablePlates = plates) {
+  return availablePlates.find(p => p.weight === weight) || {
+    weight,
+    color: "gray",
+    size: "medium",
+    thickness: "medium",
+    available: null
+  };
 }
 
 /**
  * Calculates the greedy plate breakdown for a given weight per side.
  * @param {number} weightPerSide
+ * @param {Array} [availablePlates=plates]
  * @returns {number[]} Array of plate weights
  */
-function getPlateBreakdown(weightPerSide) {
+function getPlateBreakdown(weightPerSide, availablePlates = plates) {
   let remainingUnits = Math.round(weightPerSide * SCALE);
   const result = [];
 
-  for (const plate of plates) {
+  for (const plate of availablePlates) {
     const plateUnits = Math.round(plate.weight * SCALE);
     let count = 0;
     while (remainingUnits >= plateUnits && (plate.available === null || count < plate.available)) {
@@ -229,15 +246,36 @@ function getPlateBreakdown(weightPerSide) {
   return result;
 }
 
+function gcd(a, b) {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y) {
+    const t = y;
+    y = x % y;
+    x = t;
+  }
+  return x;
+}
+
+function getInventoryStepUnits(availablePlates) {
+  if (!availablePlates || availablePlates.length === 0) return 10;
+  let g = Math.round(availablePlates[0].weight * 2 * SCALE);
+  for (let i = 1; i < availablePlates.length; i++) {
+    g = gcd(g, Math.round(availablePlates[i].weight * 2 * SCALE));
+  }
+  return g > 0 ? g : 10;
+}
+
 /**
  * Validates and calculates plate load for a target weight and bar weight.
  * Returns structured data separating data and logic from DOM rendering.
  *
  * @param {number} barWeight
  * @param {number} targetWeight
+ * @param {Array} [availablePlates=plates]
  * @returns {object} Result object with valid flag and either data or error reason
  */
-function calculatePlateLoad(barWeight, targetWeight) {
+function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
   if (typeof targetWeight !== "number" || isNaN(targetWeight)) {
     return {
       valid: false,
@@ -276,9 +314,10 @@ function calculatePlateLoad(barWeight, targetWeight) {
   }
 
   // 3. Impossible weight check:
-  // Smallest plate is 2.5 lb (5 units). Loaded symmetrically, smallest increment is 5 lb (10 units).
-  if (diffUnits % 10 !== 0) {
-    const stepUnits = 10; // 5 lb * SCALE
+  // Dynamically determine smallest loadable increment using GCD of pair weights
+  const stepUnits = getInventoryStepUnits(availablePlates);
+
+  if (stepUnits > 0 && diffUnits % stepUnits !== 0) {
     const lowerUnits = barUnits + Math.floor(diffUnits / stepUnits) * stepUnits;
     const upperUnits = barUnits + Math.ceil(diffUnits / stepUnits) * stepUnits;
 
@@ -303,7 +342,7 @@ function calculatePlateLoad(barWeight, targetWeight) {
 
   const weightToLoad = targetWeight - barWeight;
   const weightPerSide = weightToLoad / 2;
-  const platesPerSide = getPlateBreakdown(weightPerSide);
+  const platesPerSide = getPlateBreakdown(weightPerSide, availablePlates);
 
   // Verify exact match
   const loadedPerSide = platesPerSide.reduce((sum, w) => sum + w, 0);
@@ -325,7 +364,7 @@ function calculatePlateLoad(barWeight, targetWeight) {
 
   const breakdown = [];
   for (const [weight, count] of breakdownMap.entries()) {
-    const plateDef = getPlateDef(weight);
+    const plateDef = getPlateDef(weight, availablePlates);
     breakdown.push({
       weight,
       count,
@@ -345,10 +384,75 @@ function calculatePlateLoad(barWeight, targetWeight) {
   };
 }
 
+/**
+ * BarbellVisualizer: Deep module responsible for DOM sleeve visualization.
+ * Encapsulates plate element construction, compact scaling, empty states, and sleeve mirroring.
+ */
+const BarbellVisualizer = {
+  createPlateElement(weight, getDef = getPlateDef) {
+    if (typeof document === "undefined") return null;
+    const plateDef = getDef(weight);
+    const el = document.createElement("div");
+    el.className = `plate plate-${plateDef.size} plate-${plateDef.thickness} plate-${plateDef.color}`;
+    el.setAttribute("data-weight", weight);
+    el.setAttribute("title", `${weight} lb plate`);
+
+    const label = document.createElement("span");
+    label.className = "plate-label";
+    label.textContent = weight;
+    el.appendChild(label);
+
+    return el;
+  },
+
+  render({ leftContainer, rightContainer, stageElement }, platesPerSide) {
+    if (!leftContainer || !rightContainer || !stageElement) return;
+
+    leftContainer.innerHTML = "";
+    rightContainer.innerHTML = "";
+
+    const plateCount = (platesPerSide || []).length;
+    if (plateCount > 5) {
+      stageElement.classList.add("barbell-compact");
+    } else {
+      stageElement.classList.remove("barbell-compact");
+    }
+
+    if (plateCount === 0) {
+      stageElement.classList.add("barbell-empty");
+      return;
+    }
+    stageElement.classList.remove("barbell-empty");
+
+    // Right side: largest -> smallest moving away from center (BAR | 45 | 10 | 5 | 2.5)
+    platesPerSide.forEach(weight => {
+      const plateEl = this.createPlateElement(weight);
+      if (plateEl) rightContainer.appendChild(plateEl);
+    });
+
+    // Left side: mirrored (2.5 | 5 | 10 | 45 | BAR)
+    const reversed = [...platesPerSide].reverse();
+    reversed.forEach(weight => {
+      const plateEl = this.createPlateElement(weight);
+      if (plateEl) leftContainer.appendChild(plateEl);
+    });
+  },
+
+  clear({ leftContainer, rightContainer, stageElement }) {
+    if (leftContainer) leftContainer.innerHTML = "";
+    if (rightContainer) rightContainer.innerHTML = "";
+    if (stageElement) {
+      stageElement.classList.remove("barbell-compact");
+      stageElement.classList.remove("barbell-empty");
+    }
+  }
+};
+
 // Export for Node testing if in commonjs environment
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     EquipmentStore,
+    BarbellVisualizer,
     safeStorage,
     STORAGE_KEYS,
     DEFAULT_BARS,
@@ -506,6 +610,31 @@ function initApp() {
             e.preventDefault();
             selectBar(bar.id);
             closeDropdown();
+            if (dropdownTrigger) dropdownTrigger.focus();
+          } else if (e.key === "ArrowDown") {
+            e.preventDefault();
+            const nextOpt = option.nextElementSibling;
+            if (nextOpt) {
+              nextOpt.focus();
+            } else if (openAddModalBtn) {
+              openAddModalBtn.focus();
+            }
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            const prevOpt = option.previousElementSibling;
+            if (prevOpt) {
+              prevOpt.focus();
+            } else if (dropdownTrigger) {
+              dropdownTrigger.focus();
+            }
+          } else if (e.key === "Home") {
+            e.preventDefault();
+            const first = dropdownOptionsList.firstElementChild;
+            if (first) first.focus();
+          } else if (e.key === "End") {
+            e.preventDefault();
+            const last = dropdownOptionsList.lastElementChild;
+            if (last) last.focus();
           }
         });
 
@@ -566,6 +695,16 @@ function initApp() {
       e.stopPropagation();
       toggleDropdown();
     });
+
+    dropdownTrigger.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        openDropdown();
+        const activeOption = (dropdownOptionsList && dropdownOptionsList.querySelector(".dropdown-option.active")) ||
+                             (dropdownOptionsList && dropdownOptionsList.querySelector(".dropdown-option"));
+        if (activeOption) activeOption.focus();
+      }
+    });
   }
 
   // Click outside to close dropdown
@@ -575,16 +714,25 @@ function initApp() {
     }
   });
 
-  // Esc key closes dropdown or modal
+  // Esc key closes dropdown or modal and restores focus
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      closeDropdown();
-      closeModal();
+      const isModalOpen = addModal && !addModal.classList.contains("hidden");
+      const isDropdownOpen = dropdownContainer && dropdownContainer.classList.contains("open");
+      if (isModalOpen) {
+        closeModal();
+      } else if (isDropdownOpen) {
+        closeDropdown();
+        if (dropdownTrigger) dropdownTrigger.focus();
+      }
     }
   });
 
+  let modalTriggerElement = null;
+
   // Modal event listeners
   function openModal() {
+    modalTriggerElement = document.activeElement;
     closeDropdown();
     if (modalErrorMsg) {
       modalErrorMsg.textContent = "";
@@ -604,12 +752,25 @@ function initApp() {
     if (addModal) {
       addModal.classList.add("hidden");
     }
+    if (modalTriggerElement && typeof modalTriggerElement.focus === "function") {
+      modalTriggerElement.focus();
+    } else if (dropdownTrigger) {
+      dropdownTrigger.focus();
+    }
   }
 
   if (openAddModalBtn) {
     openAddModalBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       openModal();
+    });
+
+    openAddModalBtn.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const last = dropdownOptionsList ? dropdownOptionsList.lastElementChild : null;
+        if (last) last.focus();
+      }
     });
   }
 
@@ -625,6 +786,29 @@ function initApp() {
     addModal.addEventListener("click", (e) => {
       if (e.target === addModal) {
         closeModal();
+      }
+    });
+
+    // Trap focus inside modal
+    addModal.addEventListener("keydown", (e) => {
+      if (e.key === "Tab") {
+        const focusable = addModal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const focusableArr = Array.from(focusable).filter(
+          el => !el.disabled && el.offsetParent !== null
+        );
+        if (focusableArr.length === 0) return;
+        const first = focusableArr[0];
+        const last = focusableArr[focusableArr.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     });
   }
@@ -665,9 +849,13 @@ function initApp() {
     const current = raw === "" ? getSelectedBar().weight : parseFloat(raw);
     let next = isNaN(current) ? getSelectedBar().weight : current + delta;
     if (next < 0) next = 0;
+    if (next > 2000) next = 2000;
     targetInput.value = next;
     calculate();
-    targetInput.focus();
+    // Only maintain focus if already focused, avoiding mobile virtual keyboard popup
+    if (document.activeElement === targetInput) {
+      targetInput.focus();
+    }
   }
 
   if (stepUpBtn) {
@@ -698,7 +886,10 @@ function initApp() {
     clearBtn.addEventListener("click", () => {
       targetInput.value = "";
       calculate();
-      targetInput.focus();
+      const isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      if (!isTouch) {
+        targetInput.focus();
+      }
     });
   }
 
@@ -729,12 +920,22 @@ function initApp() {
     emptyState.classList.remove("hidden");
     errorContainer.classList.add("hidden");
     resultsContainer.classList.add("hidden");
+    BarbellVisualizer.clear({
+      leftContainer: barbellLeftContainer,
+      rightContainer: barbellRightContainer,
+      stageElement: barbellEl
+    });
   }
 
   function showErrorState(result) {
     emptyState.classList.add("hidden");
     resultsContainer.classList.add("hidden");
     errorContainer.classList.remove("hidden");
+    BarbellVisualizer.clear({
+      leftContainer: barbellLeftContainer,
+      rightContainer: barbellRightContainer,
+      stageElement: barbellEl
+    });
 
     renderError(result);
   }
@@ -747,8 +948,12 @@ function initApp() {
     if (resBarNameEl) resBarNameEl.textContent = `${selectedBar.shortName} (${selectedBar.weight} lb)`;
     if (resSideWeightEl) resSideWeightEl.textContent = `${result.weightPerSide} lb per side`;
 
-    // Render barbell visualization
-    renderBarbell(result.platesPerSide);
+    // Render barbell visualization via BarbellVisualizer deep module
+    BarbellVisualizer.render({
+      leftContainer: barbellLeftContainer,
+      rightContainer: barbellRightContainer,
+      stageElement: barbellEl
+    }, result.platesPerSide);
 
     // Render plate breakdown text
     renderBreakdown(result);
@@ -783,55 +988,6 @@ function initApp() {
         errorClosestEl.appendChild(btnGroup);
       }
     }
-  }
-
-  function createPlateElement(weight) {
-    const plateDef = getPlateDef(weight);
-    const el = document.createElement("div");
-    el.className = `plate plate-${plateDef.size} plate-${plateDef.thickness} plate-${plateDef.color}`;
-    el.setAttribute("data-weight", weight);
-    el.setAttribute("title", `${weight} lb plate`);
-
-    // Inner label
-    const label = document.createElement("span");
-    label.className = "plate-label";
-    label.textContent = weight;
-    el.appendChild(label);
-
-    return el;
-  }
-
-  function renderBarbell(platesPerSide) {
-    if (!barbellLeftContainer || !barbellRightContainer || !barbellEl) return;
-
-    barbellLeftContainer.innerHTML = "";
-    barbellRightContainer.innerHTML = "";
-
-    // Adjust scale factor if many plates to avoid horizontal overflow on 320px screens
-    const plateCount = platesPerSide.length;
-    if (plateCount > 5) {
-      barbellEl.classList.add("barbell-compact");
-    } else {
-      barbellEl.classList.remove("barbell-compact");
-    }
-
-    if (platesPerSide.length === 0) {
-      // Bar only (no plates)
-      barbellEl.classList.add("barbell-empty");
-      return;
-    }
-    barbellEl.classList.remove("barbell-empty");
-
-    // Right side: largest -> smallest moving away from center (BAR | 45 | 10 | 5 | 2.5)
-    platesPerSide.forEach(weight => {
-      barbellRightContainer.appendChild(createPlateElement(weight));
-    });
-
-    // Left side: mirrored (2.5 | 5 | 10 | 45 | BAR)
-    const reversed = [...platesPerSide].reverse();
-    reversed.forEach(weight => {
-      barbellLeftContainer.appendChild(createPlateElement(weight));
-    });
   }
 
   function renderBreakdown(result) {
