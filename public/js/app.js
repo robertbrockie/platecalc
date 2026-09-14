@@ -120,7 +120,7 @@ const EquipmentStore = {
 
   add({ name, weight }) {
     const trimmedName = (name || "").trim();
-    const numWeight = parseFloat(weight);
+    const numWeight = Math.round(parseFloat(weight) * 100) / 100;
     if (!trimmedName) {
       throw new Error("Please enter an equipment name.");
     }
@@ -319,12 +319,10 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
     };
   }
 
-  const targetUnits = Math.round(targetWeight * SCALE);
-  const barUnits = Math.round(barWeight * SCALE);
-  const diffUnits = targetUnits - barUnits;
+  const diff = targetWeight - barWeight;
 
   // 1. Target below bar weight
-  if (diffUnits < 0) {
+  if (diff < -1e-6) {
     return {
       valid: false,
       reason: "TARGET_BELOW_BAR",
@@ -336,7 +334,7 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
   }
 
   // 2. Bar only (0 plates needed)
-  if (diffUnits === 0) {
+  if (Math.abs(diff) <= 1e-6) {
     return {
       valid: true,
       barWeight,
@@ -352,19 +350,18 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
   // 3. Impossible weight check:
   // Dynamically determine smallest loadable increment using GCD of pair weights
   const stepUnits = getInventoryStepUnits(availablePlates);
+  const stepWeight = stepUnits > 0 ? stepUnits / SCALE : 5;
+  const numSteps = diff / stepWeight;
 
-  if (stepUnits > 0 && diffUnits % stepUnits !== 0) {
-    const lowerUnits = barUnits + Math.floor(diffUnits / stepUnits) * stepUnits;
-    const upperUnits = barUnits + Math.ceil(diffUnits / stepUnits) * stepUnits;
-
-    const lower = lowerUnits / SCALE;
-    const upper = upperUnits / SCALE;
+  if (stepWeight > 0 && Math.abs(numSteps - Math.round(numSteps)) > 1e-4) {
+    const lower = barWeight + Math.floor(numSteps) * stepWeight;
+    const upper = barWeight + Math.ceil(numSteps) * stepWeight;
 
     const closestWeights = [];
     if (lower >= barWeight) {
-      closestWeights.push(lower);
+      closestWeights.push(Math.round(lower * 100) / 100);
     }
-    closestWeights.push(upper);
+    closestWeights.push(Math.round(upper * 100) / 100);
 
     return {
       valid: false,
@@ -376,14 +373,15 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
     };
   }
 
-  const weightToLoad = targetWeight - barWeight;
-  const weightPerSide = weightToLoad / 2;
+  const weightToLoad = Math.round((targetWeight - barWeight) * 100) / 100;
+  const weightPerSide = Math.round((weightToLoad / 2) * 100) / 100;
   const platesPerSide = getPlateBreakdown(weightPerSide, availablePlates);
 
   // Verify exact match
   const loadedPerSide = platesPerSide.reduce((sum, w) => sum + w, 0);
-  if (Math.round(loadedPerSide * SCALE) !== Math.round(weightPerSide * SCALE)) {
-    const lower = barWeight + loadedPerSide * 2;
+  const actualTotal = Math.round((barWeight + loadedPerSide * 2) * 100) / 100;
+  if (Math.abs(actualTotal - targetWeight) > 0.001) {
+    const lower = actualTotal;
     const closestWeights = [];
     if (lower >= barWeight) {
       closestWeights.push(lower);
@@ -470,17 +468,31 @@ const BarbellVisualizer = {
     stageElement.classList.remove("barbell-empty");
 
     // Right side: largest -> smallest moving away from center (BAR | 45 | 10 | 5 | 2.5)
+    const rightFrag = typeof document !== "undefined" && typeof document.createDocumentFragment === "function"
+      ? document.createDocumentFragment()
+      : null;
     platesPerSide.forEach(weight => {
       const plateEl = this.createPlateElement(weight);
-      if (plateEl) rightContainer.appendChild(plateEl);
+      if (plateEl) {
+        if (rightFrag) rightFrag.appendChild(plateEl);
+        else rightContainer.appendChild(plateEl);
+      }
     });
+    if (rightFrag) rightContainer.appendChild(rightFrag);
 
     // Left side: mirrored (2.5 | 5 | 10 | 45 | BAR)
+    const leftFrag = typeof document !== "undefined" && typeof document.createDocumentFragment === "function"
+      ? document.createDocumentFragment()
+      : null;
     const reversed = [...platesPerSide].reverse();
     reversed.forEach(weight => {
       const plateEl = this.createPlateElement(weight);
-      if (plateEl) leftContainer.appendChild(plateEl);
+      if (plateEl) {
+        if (leftFrag) leftFrag.appendChild(plateEl);
+        else leftContainer.appendChild(plateEl);
+      }
     });
+    if (leftFrag) leftContainer.appendChild(leftFrag);
   },
 
   clear({ leftContainer, rightContainer, stageElement }) {
@@ -525,10 +537,17 @@ const BreakdownView = {
         emptyNotice.textContent = "Bar only (0 plates)";
         listEl.appendChild(emptyNotice);
       } else if (result.breakdown) {
+        const frag = typeof document !== "undefined" && typeof document.createDocumentFragment === "function"
+          ? document.createDocumentFragment()
+          : null;
         result.breakdown.forEach(item => {
           const badge = this.createBadgeElement(item);
-          if (badge) listEl.appendChild(badge);
+          if (badge) {
+            if (frag) frag.appendChild(badge);
+            else listEl.appendChild(badge);
+          }
         });
+        if (frag) listEl.appendChild(frag);
       }
     }
 
@@ -763,7 +782,15 @@ const EquipmentDropdown = {
     }
     this._currentBarId = initialBarId;
 
-    const { trigger, openAddModalBtn, fallbackSelect } = this._elements;
+    const { container, trigger, openAddModalBtn, fallbackSelect } = this._elements;
+
+    if (container && typeof container.addEventListener === "function") {
+      container.addEventListener("focusout", (e) => {
+        if (this.isOpen() && e.relatedTarget && !container.contains(e.relatedTarget)) {
+          this.close();
+        }
+      });
+    }
 
     if (trigger && typeof trigger.addEventListener === "function") {
       trigger.addEventListener("click", (e) => {
@@ -941,6 +968,9 @@ const EquipmentDropdown = {
                 this.render();
               }
             }
+          });
+          delBtn.addEventListener("keydown", (e) => {
+            e.stopPropagation();
           });
           rightDiv.appendChild(delBtn);
         }

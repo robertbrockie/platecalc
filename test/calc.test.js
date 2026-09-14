@@ -207,6 +207,15 @@ assert.strictEqual(res.reason, "TARGET_NOT_LOADABLE");
 assert.deepStrictEqual(res.closestWeights, [135, 140]);
 console.log("✓ Decimal target 137.5 lb suggests closest valid weights [135, 140]");
 
+// Fractional and precision target weights with invalid plate remainders
+[135.1, 135.25, 135.05, 139.9].forEach(decimalTarget => {
+  const r = calculatePlateLoad(45, decimalTarget);
+  assert.strictEqual(r.valid, false);
+  assert.strictEqual(r.reason, "TARGET_NOT_LOADABLE");
+  assert.deepStrictEqual(r.closestWeights, [135, 140]);
+});
+console.log("✓ Fractional target weights with invalid remainders safely return TARGET_NOT_LOADABLE [135, 140]");
+
 // Closest weight bounds test (46 lb on 45 lb bar does not suggest weights < 45)
 res = calculatePlateLoad(45, 46);
 assert.strictEqual(res.valid, false);
@@ -270,6 +279,13 @@ assert.throws(
   /Starting weight cannot exceed 2,000 lb/
 );
 console.log("✓ EquipmentStore enforces upper bounds on name length and starting weight");
+
+// Decimal weight rounding check in EquipmentStore.add
+const floatBar = EquipmentStore.add({ name: "Precision Machine", weight: 105.556 });
+assert.strictEqual(floatBar.weight, 105.56);
+assert.strictEqual(floatBar.label, "Precision Machine — 105.56 lb");
+EquipmentStore.delete(floatBar.id);
+console.log("✓ EquipmentStore sanitizes starting weights to 2 decimal places");
 
 // ID entropy test: multiple rapid additions have distinct IDs
 const itemA = EquipmentStore.add({ name: "Machine A", weight: 80 });
@@ -338,6 +354,13 @@ assert.strictEqual(res.valid, true);
 assert.strictEqual(res.weightPerSide, 45);
 assert.deepStrictEqual(res.platesPerSide, [45]);
 console.log("✓ Fractional carriage (72.5 lb) with target (162.5 lb) loads 45 lb per side");
+
+// Machine with 53.5 lb carriage and invalid fractional target (143.6 lb)
+res = calculatePlateLoad(53.5, 143.6);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_NOT_LOADABLE");
+assert.deepStrictEqual(res.closestWeights, [143.5, 148.5]);
+console.log("✓ Fractional carriage (53.5 lb) with invalid remainder (143.6 lb) suggests closest weights [143.5, 148.5]");
 
 console.log("\n--- Running Parameterized Inventory Tests ---");
 // Custom inventory with only 45 lb and 25 lb plates
@@ -478,6 +501,39 @@ assert.strictEqual(EquipmentDropdown.getSelectedId(), "trap");
 assert.strictEqual(EquipmentDropdown.getSelectedBar().name, "Trap Bar");
 assert.strictEqual(selectedBarCallback && selectedBarCallback.id, "trap");
 console.log("✓ EquipmentDropdown deep module interface and state transitions verified");
+
+// Test focusout auto-dismiss
+const listeners = {};
+const mockFocusContainer = {
+  classList: {
+    _classes: new Set(["open"]),
+    add(c) { this._classes.add(c); },
+    remove(c) { this._classes.delete(c); },
+    contains(c) { return this._classes.has(c); }
+  },
+  contains: (el) => el === "inside",
+  addEventListener: (event, fn) => { listeners[event] = fn; }
+};
+const mockFocusMenu = {
+  classList: {
+    _classes: new Set(),
+    add(c) { this._classes.add(c); },
+    remove(c) { this._classes.delete(c); },
+    contains(c) { return this._classes.has(c); }
+  }
+};
+EquipmentDropdown.init({
+  container: mockFocusContainer,
+  menu: mockFocusMenu
+});
+assert.strictEqual(EquipmentDropdown.isOpen(), true);
+// Focus moves inside container: remains open
+if (listeners.focusout) listeners.focusout({ relatedTarget: "inside" });
+assert.strictEqual(EquipmentDropdown.isOpen(), true);
+// Focus moves outside container: closes automatically
+if (listeners.focusout) listeners.focusout({ relatedTarget: "outside" });
+assert.strictEqual(EquipmentDropdown.isOpen(), false);
+console.log("✓ EquipmentDropdown auto-closes on container focusout when tabbing away");
 
 console.log("\n--- Running EquipmentModal Module Tests ---");
 assert.strictEqual(typeof EquipmentModal.init, "function");
