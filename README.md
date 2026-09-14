@@ -28,6 +28,7 @@ Designed for real-world gym use on phones or desktops to eliminate math mistakes
   - `Enter / Go`: Instantly dismisses the on-screen mobile keyboard so the barbell graphic and plate breakdown are immediately visible.
   - `Escape`: Instantly clears target weight when idle, or closes dropdown/modal dialogs.
 - **Ultra-Compact Barbell Scaling**: Multi-tier dynamic visual scaling (regular, compact for >5 plates, and ultra-compact for heavy powerlifting loads >8 plates per side up to 2,000 lb).
+- **Accessible & Screen-Reader Optimized**: WCAG compliant with presentation-only visual bar (`aria-hidden="true"`) and descriptive badge speech labels (`"2 plates of 45 lb"` instead of raw mathematical symbols).
 - **Completely Offline & PWA**: Installable as a Progressive Web App on iOS and Android with zero external dependencies.
 
 ---
@@ -61,6 +62,7 @@ Custom equipment is saved directly in `localStorage` and can be deleted anytime.
 | **10 lb** | White | Short (80px) | Thick (22px) |
 | **5 lb** | Blue | Short (80px) | Medium (16px) |
 | **2.5 lb** | Green | Short (80px) | Thin (10px) |
+| **Custom / Other** | Slate Gray | Medium (104px) | Medium (16px) |
 
 ---
 
@@ -75,9 +77,10 @@ platecalc/
 │   └── js/
 │       └── app.js        # Core math, greedy selection, DOM controller & localStorage
 ├── test/
-│   └── calc.test.js      # Unit test suite verifying all acceptance criteria
+│   └── calc.test.js      # Zero-dependency Node.js unit test suite (25 test suites)
 ├── package.json          # Development scripts (serve, test)
-└── README.md
+├── README.md             # User-facing documentation
+└── AGENTS.md             # Architecture & invariant specification for AI assistants and developers
 ```
 
 ---
@@ -134,7 +137,7 @@ Once installed, it works 100% offline at the gym without cell signal or WiFi.
 
 ## Testing
 
-Run the automated test suite with Node.js:
+Run the 25 automated unit test suites with Node.js:
 
 ```bash
 npm test
