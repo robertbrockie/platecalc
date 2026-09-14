@@ -276,6 +276,14 @@ function getInventoryStepUnits(availablePlates) {
  * @returns {object} Result object with valid flag and either data or error reason
  */
 function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
+  if (typeof barWeight !== "number" || isNaN(barWeight) || barWeight < 0) {
+    return {
+      valid: false,
+      reason: "INVALID_BAR_WEIGHT",
+      message: "Please select a valid equipment starting weight."
+    };
+  }
+
   if (typeof targetWeight !== "number" || isNaN(targetWeight)) {
     return {
       valid: false,
@@ -507,12 +515,56 @@ const BreakdownView = {
   }
 };
 
+/**
+ * ErrorView: Deep module responsible for rendering error diagnostics and closest-weight shortcut buttons.
+ * Encapsulates heading construction, button group creation, and event delegation.
+ */
+const ErrorView = {
+  render({ messageEl, closestEl }, result, onSelectWeight) {
+    if (messageEl) {
+      messageEl.textContent = result.message || "Invalid weight calculation.";
+    }
+
+    if (closestEl) {
+      closestEl.innerHTML = "";
+      if (result.closestWeights && result.closestWeights.length > 0) {
+        const heading = document.createElement("p");
+        heading.className = "closest-heading";
+        heading.textContent = "Closest available weights:";
+        closestEl.appendChild(heading);
+
+        const btnGroup = document.createElement("div");
+        btnGroup.className = "closest-buttons";
+
+        result.closestWeights.forEach(weight => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "closest-btn";
+          btn.textContent = `Load ${weight} lb`;
+          if (typeof onSelectWeight === "function") {
+            btn.addEventListener("click", () => onSelectWeight(weight));
+          }
+          btnGroup.appendChild(btn);
+        });
+
+        closestEl.appendChild(btnGroup);
+      }
+    }
+  },
+
+  clear({ messageEl, closestEl }) {
+    if (messageEl) messageEl.textContent = "";
+    if (closestEl) closestEl.innerHTML = "";
+  }
+};
+
 // Export for Node testing if in commonjs environment
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     EquipmentStore,
     BarbellVisualizer,
     BreakdownView,
+    ErrorView,
     safeStorage,
     STORAGE_KEYS,
     DEFAULT_BARS,
@@ -936,6 +988,19 @@ function initApp() {
   // Target input events
   targetInput.addEventListener("input", calculate);
 
+  // Keyboard arrow stepper (5 lb increments, or 25 lb with Shift)
+  targetInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const delta = e.shiftKey ? 25 : 5;
+      adjustWeight(delta);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const delta = e.shiftKey ? -25 : -5;
+      adjustWeight(delta);
+    }
+  });
+
   if (calcForm) {
     calcForm.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -995,6 +1060,10 @@ function initApp() {
       barWeightEl,
       totalWeightEl
     });
+    ErrorView.clear({
+      messageEl: errorMessageEl,
+      closestEl: errorClosestEl
+    });
   }
 
   function showErrorState(result) {
@@ -1014,7 +1083,14 @@ function initApp() {
       totalWeightEl
     });
 
-    renderError(result);
+    ErrorView.render(
+      { messageEl: errorMessageEl, closestEl: errorClosestEl },
+      result,
+      (weight) => {
+        targetInput.value = weight;
+        calculate();
+      }
+    );
   }
 
   function showResultState(result, selectedBar) {
@@ -1040,37 +1116,11 @@ function initApp() {
       barWeightEl,
       totalWeightEl
     }, result);
-  }
 
-  function renderError(result) {
-    if (errorMessageEl) errorMessageEl.textContent = result.message;
-
-    if (errorClosestEl) {
-      errorClosestEl.innerHTML = "";
-      if (result.closestWeights && result.closestWeights.length > 0) {
-        const heading = document.createElement("p");
-        heading.className = "closest-heading";
-        heading.textContent = "Closest available weights:";
-        errorClosestEl.appendChild(heading);
-
-        const btnGroup = document.createElement("div");
-        btnGroup.className = "closest-buttons";
-
-        result.closestWeights.forEach(weight => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "closest-btn";
-          btn.textContent = `Load ${weight} lb`;
-          btn.addEventListener("click", () => {
-            targetInput.value = weight;
-            calculate();
-          });
-          btnGroup.appendChild(btn);
-        });
-
-        errorClosestEl.appendChild(btnGroup);
-      }
-    }
+    ErrorView.clear({
+      messageEl: errorMessageEl,
+      closestEl: errorClosestEl
+    });
   }
 
   // Register Service Worker for offline gym use & PWA install

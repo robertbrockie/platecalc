@@ -238,7 +238,7 @@ assert.strictEqual(res.totalPlatesCount, 48);
 console.log("✓ 2,000 lb load calculates correctly (977.5 lb per side, 48 plates total)");
 
 console.log("\n--- Running EquipmentStore Deep Module & Storage Resilience Tests ---");
-const { EquipmentStore, BarbellVisualizer, BreakdownView, safeStorage } = require("../public/js/app.js");
+const { EquipmentStore, BarbellVisualizer, BreakdownView, ErrorView, safeStorage } = require("../public/js/app.js");
 
 // Built-in checks
 assert.strictEqual(EquipmentStore.getBuiltIn().length, 4);
@@ -353,5 +353,20 @@ res = calculatePlateLoad(45, parseFloat("  225.0  "));
 assert.strictEqual(res.valid, true);
 assert.strictEqual(res.weightPerSide, 90);
 console.log("✓ String number parsing safely handles leading zeros and whitespace");
+
+console.log("\n--- Running ErrorView Module Tests ---");
+assert.strictEqual(typeof ErrorView.render, "function");
+assert.strictEqual(typeof ErrorView.clear, "function");
+ErrorView.clear({}); // Should run safely without throwing
+console.log("✓ ErrorView deep module interface verified");
+
+console.log("\n--- Running Defensive barWeight Invariant Tests ---");
+[NaN, -45, -1, "straight", null, undefined, {}].forEach(badBar => {
+  const r = calculatePlateLoad(badBar, 135);
+  assert.strictEqual(r.valid, false);
+  assert.strictEqual(r.reason, "INVALID_BAR_WEIGHT");
+  assert.strictEqual(r.message, "Please select a valid equipment starting weight.");
+});
+console.log("✓ All non-numeric or negative bar weights safely return INVALID_BAR_WEIGHT");
 
 console.log("\nALL TESTS PASSED SUCCESSFULLY!");
