@@ -408,7 +408,7 @@ main {
 }
 
 .option-delete-btn:hover {
-  color: var(--accent-red);
+  color: var(--accent-rose);
   background: rgba(239, 68, 68, 0.15);
 }
 

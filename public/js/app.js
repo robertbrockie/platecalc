@@ -120,7 +120,7 @@ const EquipmentStore = {
     if (numWeight > 2000) {
       throw new Error("Starting weight cannot exceed 2,000 lb.");
     }
-    const id = "custom_" + Date.now();
+    const id = "custom_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
     const newBar = {
       id,
       name: trimmedName,
@@ -295,7 +295,8 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
       reason: "TARGET_BELOW_BAR",
       barWeight,
       targetWeight,
-      message: `Target weight must be at least ${barWeight} lb for this bar.`
+      message: `Target weight must be at least ${barWeight} lb for this bar.`,
+      closestWeights: [barWeight]
     };
   }
 
@@ -347,12 +348,18 @@ function calculatePlateLoad(barWeight, targetWeight, availablePlates = plates) {
   // Verify exact match
   const loadedPerSide = platesPerSide.reduce((sum, w) => sum + w, 0);
   if (Math.round(loadedPerSide * SCALE) !== Math.round(weightPerSide * SCALE)) {
+    const lower = barWeight + loadedPerSide * 2;
+    const closestWeights = [];
+    if (lower >= barWeight) {
+      closestWeights.push(lower);
+    }
     return {
       valid: false,
       reason: "TARGET_NOT_LOADABLE",
       barWeight,
       targetWeight,
-      message: `${targetWeight} lb cannot be loaded exactly with the available plates.`
+      message: `${targetWeight} lb cannot be loaded exactly with the available plates.`,
+      closestWeights
     };
   }
 
@@ -448,11 +455,64 @@ const BarbellVisualizer = {
   }
 };
 
+/**
+ * BreakdownView: Deep module responsible for rendering the breakdown badges and summary stats.
+ * Encapsulates badge element creation, formatting, and summary statistics display.
+ */
+const BreakdownView = {
+  createBadgeElement(item) {
+    if (typeof document === "undefined") return null;
+    const li = document.createElement("li");
+    li.className = "breakdown-badge";
+
+    const dot = document.createElement("span");
+    dot.className = `plate-dot plate-dot-${(item.plateDef && item.plateDef.color) || "blue"}`;
+
+    const text = document.createElement("span");
+    text.innerHTML = `<strong>${item.weight}</strong>&times;${item.count}`;
+
+    li.appendChild(dot);
+    li.appendChild(text);
+    return li;
+  },
+
+  render({ listEl, totalPlatesEl, loadedPerSideEl, barWeightEl, totalWeightEl }, result) {
+    if (listEl) {
+      listEl.innerHTML = "";
+      if (!result.platesPerSide || result.platesPerSide.length === 0) {
+        const emptyNotice = document.createElement("li");
+        emptyNotice.className = "breakdown-empty-text";
+        emptyNotice.textContent = "Bar only (0 plates)";
+        listEl.appendChild(emptyNotice);
+      } else if (result.breakdown) {
+        result.breakdown.forEach(item => {
+          const badge = this.createBadgeElement(item);
+          if (badge) listEl.appendChild(badge);
+        });
+      }
+    }
+
+    if (totalPlatesEl) totalPlatesEl.textContent = `${result.totalPlatesCount}`;
+    if (loadedPerSideEl) loadedPerSideEl.textContent = `${result.weightPerSide} lb`;
+    if (barWeightEl) barWeightEl.textContent = `${result.barWeight} lb`;
+    if (totalWeightEl) totalWeightEl.textContent = `${result.targetWeight} lb`;
+  },
+
+  clear({ listEl, totalPlatesEl, loadedPerSideEl, barWeightEl, totalWeightEl }) {
+    if (listEl) listEl.innerHTML = "";
+    if (totalPlatesEl) totalPlatesEl.textContent = "0";
+    if (loadedPerSideEl) loadedPerSideEl.textContent = "0 lb";
+    if (barWeightEl) barWeightEl.textContent = "0 lb";
+    if (totalWeightEl) totalWeightEl.textContent = "0 lb";
+  }
+};
+
 // Export for Node testing if in commonjs environment
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     EquipmentStore,
     BarbellVisualizer,
+    BreakdownView,
     safeStorage,
     STORAGE_KEYS,
     DEFAULT_BARS,
@@ -823,7 +883,10 @@ function initApp() {
         const newBar = EquipmentStore.add({ name, weight });
         closeModal();
         selectBar(newBar.id);
-        targetInput.focus();
+        const isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+        if (!isTouch) {
+          targetInput.focus();
+        }
       } catch (err) {
         if (modalErrorMsg) {
           modalErrorMsg.textContent = err.message;
@@ -925,6 +988,13 @@ function initApp() {
       rightContainer: barbellRightContainer,
       stageElement: barbellEl
     });
+    BreakdownView.clear({
+      listEl: breakdownList,
+      totalPlatesEl: breakdownTotalPlates,
+      loadedPerSideEl,
+      barWeightEl,
+      totalWeightEl
+    });
   }
 
   function showErrorState(result) {
@@ -935,6 +1005,13 @@ function initApp() {
       leftContainer: barbellLeftContainer,
       rightContainer: barbellRightContainer,
       stageElement: barbellEl
+    });
+    BreakdownView.clear({
+      listEl: breakdownList,
+      totalPlatesEl: breakdownTotalPlates,
+      loadedPerSideEl,
+      barWeightEl,
+      totalWeightEl
     });
 
     renderError(result);
@@ -955,8 +1032,14 @@ function initApp() {
       stageElement: barbellEl
     }, result.platesPerSide);
 
-    // Render plate breakdown text
-    renderBreakdown(result);
+    // Render plate breakdown text via BreakdownView deep module
+    BreakdownView.render({
+      listEl: breakdownList,
+      totalPlatesEl: breakdownTotalPlates,
+      loadedPerSideEl,
+      barWeightEl,
+      totalWeightEl
+    }, result);
   }
 
   function renderError(result) {
@@ -987,47 +1070,6 @@ function initApp() {
 
         errorClosestEl.appendChild(btnGroup);
       }
-    }
-  }
-
-  function renderBreakdown(result) {
-    if (breakdownList) {
-      breakdownList.innerHTML = "";
-
-      if (result.platesPerSide.length === 0) {
-        const emptyNotice = document.createElement("li");
-        emptyNotice.className = "breakdown-empty-text";
-        emptyNotice.textContent = "Bar only (0 plates)";
-        breakdownList.appendChild(emptyNotice);
-      } else {
-        result.breakdown.forEach(item => {
-          const li = document.createElement("li");
-          li.className = "breakdown-badge";
-
-          const dot = document.createElement("span");
-          dot.className = `plate-dot plate-dot-${item.plateDef.color}`;
-
-          const text = document.createElement("span");
-          text.innerHTML = `<strong>${item.weight}</strong>&times;${item.count}`;
-
-          li.appendChild(dot);
-          li.appendChild(text);
-          breakdownList.appendChild(li);
-        });
-      }
-    }
-
-    if (breakdownTotalPlates) {
-      breakdownTotalPlates.textContent = `${result.totalPlatesCount}`;
-    }
-    if (loadedPerSideEl) {
-      loadedPerSideEl.textContent = `${result.weightPerSide} lb`;
-    }
-    if (barWeightEl) {
-      barWeightEl.textContent = `${result.barWeight} lb`;
-    }
-    if (totalWeightEl) {
-      totalWeightEl.textContent = `${result.targetWeight} lb`;
     }
   }
 
