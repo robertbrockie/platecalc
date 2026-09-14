@@ -236,13 +236,32 @@ assert.strictEqual(res.totalPlatesCount, 48);
 console.log("✓ 2,000 lb load calculates correctly (977.5 lb per side, 48 plates total)");
 
 console.log("\n--- Running EquipmentStore Deep Module & Storage Resilience Tests ---");
-const { EquipmentStore, safeStorage } = require("../public/js/app.js");
+const { EquipmentStore, BarbellVisualizer, safeStorage } = require("../public/js/app.js");
 
 // Built-in checks
 assert.strictEqual(EquipmentStore.getBuiltIn().length, 4);
 assert.strictEqual(EquipmentStore.getById("straight").weight, 45);
 assert.strictEqual(EquipmentStore.getById("nonexistent"), null);
 console.log("✓ EquipmentStore.getBuiltIn and getById resolve correctly");
+
+// Upper-bound validation checks
+assert.throws(
+  () => EquipmentStore.add({ name: "A".repeat(45), weight: 100 }),
+  /Equipment name cannot exceed 40 characters/
+);
+assert.throws(
+  () => EquipmentStore.add({ name: "Extreme Machine", weight: 2500 }),
+  /Starting weight cannot exceed 2,000 lb/
+);
+console.log("✓ EquipmentStore enforces upper bounds on name length and starting weight");
+
+// Deletion boundary checks
+const builtInCountBefore = EquipmentStore.getAll().length;
+EquipmentStore.delete("straight");
+assert.strictEqual(EquipmentStore.getAll().length, builtInCountBefore);
+EquipmentStore.delete("non_existent_id");
+assert.strictEqual(EquipmentStore.getAll().length, builtInCountBefore);
+console.log("✓ EquipmentStore protects built-in bars and handles invalid deletion IDs safely");
 
 // Last selected bar tracking
 EquipmentStore.setLastSelectedId("trap");
@@ -262,5 +281,46 @@ const writeSuccess = safeStorage.set("test_key", "value");
 assert.strictEqual(writeSuccess, false);
 console.log("✓ safeStorage safely catches storage exceptions in restricted contexts");
 global.localStorage.setItem = origSetItem;
+
+console.log("\n--- Running Fractional Machine Starting Weights Tests ---");
+// Machine with 53.5 lb starting carriage
+res = calculatePlateLoad(53.5, 143.5);
+assert.strictEqual(res.valid, true);
+assert.strictEqual(res.weightPerSide, 45);
+assert.deepStrictEqual(res.platesPerSide, [45]);
+console.log("✓ Fractional carriage (53.5 lb) with target (143.5 lb) loads 45 lb per side");
+
+// Machine with 72.5 lb starting carriage
+res = calculatePlateLoad(72.5, 162.5);
+assert.strictEqual(res.valid, true);
+assert.strictEqual(res.weightPerSide, 45);
+assert.deepStrictEqual(res.platesPerSide, [45]);
+console.log("✓ Fractional carriage (72.5 lb) with target (162.5 lb) loads 45 lb per side");
+
+console.log("\n--- Running Parameterized Inventory Tests ---");
+// Custom inventory with only 45 lb and 25 lb plates
+const limitedPlates = [
+  { weight: 45, color: "blue", size: "large", thickness: "thick", available: null },
+  { weight: 25, color: "green", size: "large", thickness: "thin", available: null }
+];
+res = calculatePlateLoad(45, 185, limitedPlates);
+assert.strictEqual(res.valid, true);
+assert.deepStrictEqual(res.platesPerSide, [45, 25]);
+assert.strictEqual(res.weightPerSide, 70);
+assert.strictEqual(res.totalPlatesCount, 4);
+console.log("✓ calculatePlateLoad with limited plates [45, 25] loads [45, 25] per side for 185 lb");
+
+// 65 lb target (10 lb per side) cannot be loaded with only 45 and 25 lb plates
+res = calculatePlateLoad(45, 65, limitedPlates);
+assert.strictEqual(res.valid, false);
+assert.strictEqual(res.reason, "TARGET_NOT_LOADABLE");
+console.log("✓ calculatePlateLoad correctly flags unloadable target given limited plate inventory");
+
+console.log("\n--- Running BarbellVisualizer Module Tests ---");
+assert.strictEqual(typeof BarbellVisualizer.createPlateElement, "function");
+assert.strictEqual(typeof BarbellVisualizer.render, "function");
+assert.strictEqual(typeof BarbellVisualizer.clear, "function");
+assert.strictEqual(BarbellVisualizer.createPlateElement(45), null); // in node without document
+console.log("✓ BarbellVisualizer deep module interface verified");
 
 console.log("\nALL TESTS PASSED SUCCESSFULLY!");
