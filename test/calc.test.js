@@ -332,6 +332,32 @@ const safeBars = EquipmentStore.getCustom();
 assert.deepStrictEqual(safeBars, []);
 console.log("✓ EquipmentStore handles corrupted storage without throwing");
 
+// Non-array JSON type resilience (objects, primitives)
+EquipmentStore.clearCache();
+mockStorage["platecalc_custom_bars"] = JSON.stringify({ not: "an array" });
+assert.deepStrictEqual(EquipmentStore.getCustom(), []);
+assert.doesNotThrow(() => EquipmentStore.getAll());
+
+EquipmentStore.clearCache();
+mockStorage["platecalc_custom_bars"] = JSON.stringify("string_val");
+assert.deepStrictEqual(EquipmentStore.getCustom(), []);
+assert.doesNotThrow(() => EquipmentStore.getAll());
+
+// Corrupted items within array filtering
+EquipmentStore.clearCache();
+mockStorage["platecalc_custom_bars"] = JSON.stringify([
+  null,
+  42,
+  "invalid",
+  { id: "valid_bar", name: "Valid Custom", weight: 95 },
+  { missingWeight: true }
+]);
+const filteredCustom = EquipmentStore.getCustom();
+assert.strictEqual(filteredCustom.length, 1);
+assert.strictEqual(filteredCustom[0].id, "valid_bar");
+assert.strictEqual(filteredCustom[0].weight, 95);
+console.log("✓ EquipmentStore sanitizes non-array JSON and corrupted items without throwing");
+
 // QuotaExceeded / storage write failure resilience
 const origSetItem = global.localStorage.setItem;
 global.localStorage.setItem = () => { throw new Error("QuotaExceededError"); };
@@ -432,6 +458,23 @@ assert.strictEqual(typeof BreakdownView.render, "function");
 assert.strictEqual(typeof BreakdownView.clear, "function");
 assert.strictEqual(BreakdownView.createBadgeElement({ weight: 45, count: 1 }), null); // in node without document
 console.log("✓ BreakdownView deep module interface verified");
+
+global.document = {
+  createElement: (tag) => ({
+    tagName: tag.toUpperCase(),
+    attributes: {},
+    setAttribute(k, v) { this.attributes[k] = v; },
+    appendChild() {}
+  }),
+  createTextNode: (t) => t
+};
+const badgeSingle = BreakdownView.createBadgeElement({ weight: 45, count: 1 });
+assert.strictEqual(badgeSingle.attributes["aria-label"], "1 plate of 45 lb");
+
+const badgeMulti = BreakdownView.createBadgeElement({ weight: 25, count: 2 });
+assert.strictEqual(badgeMulti.attributes["aria-label"], "2 plates of 25 lb");
+delete global.document;
+console.log("✓ BreakdownView generates accessible aria-labels for single and multi-plate badges");
 
 console.log("\n--- Running String & Decimal Input Parsing Tests ---");
 res = calculatePlateLoad(45, parseFloat("00135"));
@@ -556,6 +599,17 @@ assert.strictEqual(EquipmentModal.isOpen(), true);
 EquipmentModal.close();
 assert.strictEqual(EquipmentModal.isOpen(), false);
 console.log("✓ EquipmentModal deep module interface and visibility toggles verified");
+
+// Focus timer cancellation test
+let focused = false;
+const mockInput = { focus: () => { focused = true; } };
+EquipmentModal.init({ modalEl: mockModalEl, nameInput: mockInput });
+EquipmentModal.open();
+assert.strictEqual(EquipmentModal.isOpen(), true);
+EquipmentModal.close();
+assert.strictEqual(EquipmentModal.isOpen(), false);
+assert.strictEqual(EquipmentModal._focusTimeout, null);
+console.log("✓ EquipmentModal focus timer cancellation and lifecycle verified");
 
 console.log("\n--- Running CalculatorView Deep Module Tests ---");
 const { CalculatorView } = require("../public/js/app.js");

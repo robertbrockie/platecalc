@@ -96,7 +96,14 @@ const EquipmentStore = {
 
   getCustom() {
     if (this._customCache === null) {
-      this._customCache = safeStorage.getJSON(STORAGE_KEYS.CUSTOM_BARS, []) || [];
+      const parsed = safeStorage.getJSON(STORAGE_KEYS.CUSTOM_BARS, []);
+      if (Array.isArray(parsed)) {
+        this._customCache = parsed.filter(
+          b => b && typeof b === "object" && typeof b.id === "string" && typeof b.weight === "number"
+        );
+      } else {
+        this._customCache = [];
+      }
     }
     return this._customCache;
   },
@@ -540,6 +547,10 @@ const BreakdownView = {
     if (typeof document === "undefined") return null;
     const li = document.createElement("li");
     li.className = "breakdown-badge";
+    li.setAttribute(
+      "aria-label",
+      `${item.count} ${item.count === 1 ? "plate" : "plates"} of ${item.weight} lb`
+    );
 
     const dot = document.createElement("span");
     dot.className = `plate-dot plate-dot-${(item.plateDef && item.plateDef.color) || "blue"}`;
@@ -1072,6 +1083,7 @@ const EquipmentModal = {
   _elements: null,
   _callbacks: null,
   _triggerElement: null,
+  _focusTimeout: null,
 
   init(elements, callbacks = {}) {
     this._elements = elements;
@@ -1161,13 +1173,20 @@ const EquipmentModal = {
 
     if (modalEl) {
       modalEl.classList.remove("hidden");
-      setTimeout(() => {
-        if (nameInput) nameInput.focus();
+      if (this._focusTimeout) clearTimeout(this._focusTimeout);
+      this._focusTimeout = setTimeout(() => {
+        if (this.isOpen() && nameInput && typeof nameInput.focus === "function") {
+          nameInput.focus();
+        }
       }, 50);
     }
   },
 
   close() {
+    if (this._focusTimeout) {
+      clearTimeout(this._focusTimeout);
+      this._focusTimeout = null;
+    }
     const { modalEl } = this._elements || {};
     if (modalEl) {
       modalEl.classList.add("hidden");
