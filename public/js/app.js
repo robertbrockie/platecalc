@@ -88,16 +88,26 @@ const safeStorage = {
  * EquipmentStore: Deep module providing equipment management and persistence.
  */
 const EquipmentStore = {
+  _customCache: null,
+
   getBuiltIn() {
     return DEFAULT_BARS;
   },
 
   getCustom() {
-    return safeStorage.getJSON(STORAGE_KEYS.CUSTOM_BARS, []) || [];
+    if (this._customCache === null) {
+      this._customCache = safeStorage.getJSON(STORAGE_KEYS.CUSTOM_BARS, []) || [];
+    }
+    return this._customCache;
   },
 
   saveCustom(customBars) {
+    this._customCache = customBars;
     safeStorage.set(STORAGE_KEYS.CUSTOM_BARS, customBars);
+  },
+
+  clearCache() {
+    this._customCache = null;
   },
 
   getAll() {
@@ -145,6 +155,9 @@ const EquipmentStore = {
     const list = this.getCustom();
     const updated = list.filter(b => b.id !== id);
     this.saveCustom(updated);
+    if (this.getLastSelectedId() === id) {
+      this.setLastSelectedId("straight");
+    }
     return updated;
   },
 
@@ -441,10 +454,13 @@ const BarbellVisualizer = {
     rightContainer.innerHTML = "";
 
     const plateCount = (platesPerSide || []).length;
-    if (plateCount > 5) {
+    if (plateCount > 8) {
+      stageElement.classList.add("barbell-compact", "barbell-ultra-compact");
+    } else if (plateCount > 5) {
       stageElement.classList.add("barbell-compact");
+      stageElement.classList.remove("barbell-ultra-compact");
     } else {
-      stageElement.classList.remove("barbell-compact");
+      stageElement.classList.remove("barbell-compact", "barbell-ultra-compact");
     }
 
     if (plateCount === 0) {
@@ -471,8 +487,7 @@ const BarbellVisualizer = {
     if (leftContainer) leftContainer.innerHTML = "";
     if (rightContainer) rightContainer.innerHTML = "";
     if (stageElement) {
-      stageElement.classList.remove("barbell-compact");
-      stageElement.classList.remove("barbell-empty");
+      stageElement.classList.remove("barbell-compact", "barbell-ultra-compact", "barbell-empty");
     }
   }
 };
@@ -491,7 +506,10 @@ const BreakdownView = {
     dot.className = `plate-dot plate-dot-${(item.plateDef && item.plateDef.color) || "blue"}`;
 
     const text = document.createElement("span");
-    text.innerHTML = `<strong>${item.weight}</strong>&times;${item.count}`;
+    const strong = document.createElement("strong");
+    strong.textContent = item.weight;
+    text.appendChild(strong);
+    text.appendChild(document.createTextNode(`\u00D7${item.count}`));
 
     li.appendChild(dot);
     li.appendChild(text);
@@ -790,11 +808,15 @@ const EquipmentDropdown = {
     }
 
     if (typeof document !== "undefined") {
-      document.addEventListener("click", (e) => {
+      if (this._outsideClickListener) {
+        document.removeEventListener("click", this._outsideClickListener);
+      }
+      this._outsideClickListener = (e) => {
         if (this._elements && this._elements.container && !this._elements.container.contains(e.target)) {
           this.close();
         }
-      });
+      };
+      document.addEventListener("click", this._outsideClickListener);
     }
 
     this.render();
@@ -1276,9 +1298,13 @@ function initApp() {
   if (targetInput) {
     targetInput.addEventListener("input", calculate);
 
-    // Keyboard arrow stepper (5 lb increments, or 25 lb with Shift)
+    // Keyboard arrow stepper (5 lb increments, or 25 lb with Shift) & Enter to blur/calculate
     targetInput.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowUp") {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        targetInput.blur();
+        calculate();
+      } else if (e.key === "ArrowUp") {
         e.preventDefault();
         const delta = e.shiftKey ? 25 : 5;
         adjustWeight(delta);

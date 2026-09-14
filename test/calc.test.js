@@ -296,7 +296,21 @@ EquipmentStore.setLastSelectedId("trap");
 assert.strictEqual(EquipmentStore.getLastSelectedId(), "trap");
 console.log("✓ EquipmentStore tracks and persists last selected bar");
 
+// Test in-memory caching
+const customList1 = EquipmentStore.getCustom();
+const customList2 = EquipmentStore.getCustom();
+assert.strictEqual(customList1, customList2); // identical memory reference
+
+// Test LAST_BAR cleanup on deletion
+const tempBar = EquipmentStore.add({ name: "Temp Machine", weight: 80 });
+EquipmentStore.setLastSelectedId(tempBar.id);
+assert.strictEqual(EquipmentStore.getLastSelectedId(), tempBar.id);
+EquipmentStore.delete(tempBar.id);
+assert.strictEqual(EquipmentStore.getLastSelectedId(), "straight");
+console.log("✓ EquipmentStore in-memory caching and LAST_BAR auto-reset verified");
+
 // Corrupted JSON resilience
+EquipmentStore.clearCache();
 mockStorage["platecalc_custom_bars"] = "INVALID_CORRUPTED_JSON{{{";
 const safeBars = EquipmentStore.getCustom();
 assert.deepStrictEqual(safeBars, []);
@@ -349,7 +363,45 @@ assert.strictEqual(typeof BarbellVisualizer.createPlateElement, "function");
 assert.strictEqual(typeof BarbellVisualizer.render, "function");
 assert.strictEqual(typeof BarbellVisualizer.clear, "function");
 assert.strictEqual(BarbellVisualizer.createPlateElement(45), null); // in node without document
-console.log("✓ BarbellVisualizer deep module interface verified");
+
+// Test compact and ultra-compact tier scaling
+const mockStage = {
+  classList: {
+    _classes: new Set(),
+    add(...args) { args.forEach(c => this._classes.add(c)); },
+    remove(...args) { args.forEach(c => this._classes.delete(c)); },
+    contains(c) { return this._classes.has(c); }
+  }
+};
+const mockContainer = { innerHTML: "", appendChild() {} };
+
+// Empty barbell
+BarbellVisualizer.render({ leftContainer: mockContainer, rightContainer: mockContainer, stageElement: mockStage }, []);
+assert.strictEqual(mockStage.classList.contains("barbell-empty"), true);
+assert.strictEqual(mockStage.classList.contains("barbell-compact"), false);
+
+// Normal load (<= 5 plates per side)
+BarbellVisualizer.render({ leftContainer: mockContainer, rightContainer: mockContainer, stageElement: mockStage }, [45, 45, 25]);
+assert.strictEqual(mockStage.classList.contains("barbell-empty"), false);
+assert.strictEqual(mockStage.classList.contains("barbell-compact"), false);
+assert.strictEqual(mockStage.classList.contains("barbell-ultra-compact"), false);
+
+// Compact load (> 5 and <= 8 plates per side)
+BarbellVisualizer.render({ leftContainer: mockContainer, rightContainer: mockContainer, stageElement: mockStage }, [45, 45, 45, 45, 45, 25]);
+assert.strictEqual(mockStage.classList.contains("barbell-compact"), true);
+assert.strictEqual(mockStage.classList.contains("barbell-ultra-compact"), false);
+
+// Ultra-compact load (> 8 plates per side, e.g. 10 plates)
+BarbellVisualizer.render({ leftContainer: mockContainer, rightContainer: mockContainer, stageElement: mockStage }, [45, 45, 45, 45, 45, 45, 45, 45, 25, 10]);
+assert.strictEqual(mockStage.classList.contains("barbell-compact"), true);
+assert.strictEqual(mockStage.classList.contains("barbell-ultra-compact"), true);
+
+// Clear resets all tiers
+BarbellVisualizer.clear({ leftContainer: mockContainer, rightContainer: mockContainer, stageElement: mockStage });
+assert.strictEqual(mockStage.classList.contains("barbell-compact"), false);
+assert.strictEqual(mockStage.classList.contains("barbell-ultra-compact"), false);
+assert.strictEqual(mockStage.classList.contains("barbell-empty"), false);
+console.log("✓ BarbellVisualizer multi-tier compact and ultra-compact scaling verified");
 
 console.log("\n--- Running BreakdownView Module Tests ---");
 assert.strictEqual(typeof BreakdownView.createBadgeElement, "function");

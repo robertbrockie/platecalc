@@ -23,6 +23,11 @@ Designed for real-world gym use on phones or desktops to eliminate math mistakes
   - Warns if the target weight is below the bar or machine starting weight.
   - Warns if a weight cannot be loaded symmetrically with available plates (e.g., 47 lb on a 45 lb bar) and provides one-tap shortcut buttons for the closest available weights.
 - **One-Tap Steppers & Clear**: Quick `+5` / `-5` lb stepper buttons and a dedicated centered Clear button.
+- **Gym Ergonomics & Shortcuts**:
+  - `Shift + Click` or `Shift + ArrowUp / ArrowDown`: Jumps by ±25 lb increments for rapid bar loading.
+  - `Enter / Go`: Instantly dismisses the on-screen mobile keyboard so the barbell graphic and plate breakdown are immediately visible.
+  - `Escape`: Instantly clears target weight when idle, or closes dropdown/modal dialogs.
+- **Ultra-Compact Barbell Scaling**: Multi-tier dynamic visual scaling (regular, compact for >5 plates, and ultra-compact for heavy powerlifting loads >8 plates per side up to 2,000 lb).
 - **Completely Offline & PWA**: Installable as a Progressive Web App on iOS and Android with zero external dependencies.
 
 ---

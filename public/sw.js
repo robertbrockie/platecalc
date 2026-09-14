@@ -1,4 +1,4 @@
-const CACHE_NAME = "platecalc-v11";
+const CACHE_NAME = "platecalc-v12";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
