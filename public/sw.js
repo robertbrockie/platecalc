@@ -1,4 +1,4 @@
-const CACHE_NAME = "platecalc-v10";
+const CACHE_NAME = "platecalc-v11";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
@@ -55,8 +55,10 @@ self.addEventListener("fetch", (event) => {
         });
         return networkResponse;
       }).catch(() => {
-        // Fallback for offline if not in cache
-        return caches.match("./index.html");
+        // Fallback for offline navigation requests only, preventing MIME type mismatch on assets
+        if (event.request.mode === "navigate" || (event.request.headers.get("accept") && event.request.headers.get("accept").includes("text/html"))) {
+          return caches.match("./index.html");
+        }
       });
     })
   );
