@@ -902,6 +902,29 @@ main {
   min-width: 18px;
 }
 
+/* Ultra-compact scale for heavy powerlifting loads (>8 plates per side) */
+.barbell.barbell-ultra-compact .plate-thick {
+  width: 9px;
+}
+.barbell.barbell-ultra-compact .plate-medium {
+  width: 7px;
+}
+.barbell.barbell-ultra-compact .plate-thin {
+  width: 4px;
+}
+.barbell.barbell-ultra-compact .plate-large {
+  height: 96px;
+}
+.barbell.barbell-ultra-compact .plate-small {
+  height: 56px;
+}
+.barbell.barbell-ultra-compact .plate-label {
+  display: none;
+}
+.barbell.barbell-ultra-compact .bar-shaft {
+  min-width: 12px;
+}
+
 /* ==========================================================================
    Compact Summary & Badges
    ========================================================================== */
